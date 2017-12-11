@@ -8,6 +8,7 @@ services:
     networks:
       - ${PROJECT_NAME}
 
+
 networks:
   ${PROJECT_NAME}:
     driver: bridge

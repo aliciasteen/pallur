@@ -4,6 +4,9 @@
 
 SUBCOMMAND_NAME="up"
 
+UNSET PROJECT_NAME
+unset APPLICATION_FILE
+
 cmd_desc() {
   echo "Deploy project application"
 }
@@ -21,15 +24,19 @@ help() {
   exit 1;
 }
 
+application_up() {
+  docker-compose up -d -p ${PROJECT_NAME} -f "/pallur/resources/compose/docker-compose-project.yml"
+}
+
 shift $(($OPTIND -1))
 
 while getopts "n:r:c:h" OPTION; do
   case $OPTION in
     n)
-      PROJECT_NAME=$OPTARG
+      export PROJECT_NAME=$OPTARG
       ;;
     f)
-      APPLICATION_FILE=$OPTARG
+      export APPLICATION_FILE=$OPTARG
       ;;
     h|-help)
       help
