@@ -1,9 +1,8 @@
-version: '2'
+version: '3'
 
 services:
   proxy:
     image: traefik
-    label: pallur:system
     command: --web --docker --docker.domain=docker.localhost --logLevel=DEBUG
     networks:
       - webgateway
@@ -12,10 +11,9 @@ services:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - pallur/resources/compose/configuration/traefik.toml:/traefik.toml
+      - ./configuration/traefik.toml:/traefik.toml
   etcd:
     image: quay.io/coreos/etcd
-    label: pallur:system
     restart: always
     ports:
         - 2379:2379
