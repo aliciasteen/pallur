@@ -1,4 +1,5 @@
 #!bin/bash
-echo $project_name
-pip install $project_name/requirements.txt
-python $project_name/$application_file
+echo $PROJECT_NAME
+ls /HelloWorld
+pip install /HelloWorld/requirements.txt
+python /HellowWorld/app.py

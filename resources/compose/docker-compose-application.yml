@@ -2,21 +2,17 @@ version: '2'
 services:
   application:
     container_name: project-${PROJECT_NAME}
-    labels:
-      - project:${PROJECT_NAME}
+    #labels:
+    #  - com.pallur.project=${PROJECT_NAME}
     build:
       context: ../dockerfile
-      args:
-        project_name: ${PROJECT_NAME}
-        application_file: ${APPLICATION_FILE}
     environment:
       - "project_name=${PROJECT_NAME}"
       - "application_file=${APPLICATION_FILE}"
     networks:
       - ${PROJECT_NAME}
-    volumes:
-      - ${PROJECT_NAME}:/${PROJECT_NAME}
-
+    ports:
+      - "80:80"
 networks:
-  ${PROJECT_NAME}:
+  HelloWorld:
     external: true
