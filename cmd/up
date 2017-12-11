@@ -56,10 +56,14 @@ while getopts "n:f:h" OPTION; do
   esac
 done
 
-if [ $# -lt 1 ]; then
-  help
-  exit 0
-fi
+shift $(($OPTIND -1))
+SUBCOMMAND_OPT="${1:-help}"
+
+case ${SUBCOMMAND_OPT} in
+    "help"|"up"|"cmd_desc")
+        ${SUBCOMMAND_OPT} "$@"
+        ;;
+esac
 
 if [ ! -z "$PROJECT_NAME" ] && [ ! -z "$APPLICATION_FILE" ]; then
   application_up

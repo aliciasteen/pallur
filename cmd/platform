@@ -61,7 +61,7 @@ fi
 SUBCOMMAND_OPT="${1:-help}"
 
 case ${SUBCOMMAND_OPT} in
-    "help"|"up")
+    "help"|"up"|"cmd_desc")
         ${SUBCOMMAND_OPT} "$@"
         ;;
     *)
