@@ -4,7 +4,7 @@
 
 SUBCOMMAND_NAME="up"
 
-UNSET PROJECT_NAME
+unset PROJECT_NAME
 unset APPLICATION_FILE
 
 cmd_desc() {
@@ -25,12 +25,18 @@ help() {
 }
 
 application_up() {
-  docker-compose up -d -p ${PROJECT_NAME} -f "/pallur/resources/compose/docker-compose-project.yml"
+  echo "Deploying application..."
+  if ! docker network create ${PROJECT_NAME} &> /dev/null; then
+       echo "Network already exists: ${PROJECT_NAME}"
+   else
+       echo "Created Docker network: ${PROJECT_NAME}"
+   fi
+  docker-compose -p ${PROJECT_NAME} -f /pallur/resources/compose/docker-compose-application.yml up --build -d
 }
 
 shift $(($OPTIND -1))
 
-while getopts "n:r:c:h" OPTION; do
+while getopts "n:f:h" OPTION; do
   case $OPTION in
     n)
       export PROJECT_NAME=$OPTARG
@@ -38,7 +44,7 @@ while getopts "n:r:c:h" OPTION; do
     f)
       export APPLICATION_FILE=$OPTARG
       ;;
-    h|-help)
+    h|help)
       help
       exit 1
       ;;
@@ -49,6 +55,11 @@ while getopts "n:r:c:h" OPTION; do
       ;;
   esac
 done
+
+if [ $# -lt 1 ]; then
+  help
+  exit 0
+fi
 
 if [ ! -z "$PROJECT_NAME" ] && [ ! -z "$APPLICATION_FILE" ]; then
   application_up

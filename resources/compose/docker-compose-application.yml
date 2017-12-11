@@ -1,12 +1,22 @@
 version: '2'
 services:
   application:
-    name: project-${PROJECT_NAME}
-    label: project-${PROJECT_NAME}
+    container_name: project-${PROJECT_NAME}
+    labels:
+      - project:${PROJECT_NAME}
     build:
       context: ../dockerfile
       args:
         project_name: ${PROJECT_NAME}
         application_file: ${APPLICATION_FILE}
+    environment:
+      - "project_name=${PROJECT_NAME}"
+      - "application_file=${APPLICATION_FILE}"
     networks:
       - ${PROJECT_NAME}
+    volumes:
+      - ${PROJECT_NAME}:/${PROJECT_NAME}
+
+networks:
+  ${PROJECT_NAME}:
+    external: true
