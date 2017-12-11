@@ -20,7 +20,12 @@ help() {
 }
 
 initalize() {
-  docker-compose up -d -f ../resources/docker-compose-setup.yml
+  echo "Launching Pallur"
+  docker-compose -f ../resources/docker-compose-setup.yml up -d
+}
+
+up() {
+  initalize
 }
 
 shift $(($OPTIND -1))
@@ -47,3 +52,19 @@ while getopts "n:r:c:h" OPTION; do
       ;;
   esac
 done
+
+if [ $# -lt 1 ]; then
+  help
+  exit 0
+fi
+
+SUBCOMMAND_OPT="${1:-help}"
+
+case ${SUBCOMMAND_OPT} in
+    "help"|"up")
+        ${SUBCOMMAND_OPT} "$@"
+        ;;
+    *)
+        up "$@"
+        ;;
+esac
