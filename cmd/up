@@ -1,0 +1,48 @@
+#!bin/bash -e
+
+# Bring project up
+
+SUBCOMMAND_NAME="up"
+
+cmd_desc() {
+  echo "Deploy project application"
+}
+
+help() {
+  echo "usage: ${CMD} ${SUBCOMMAND_NAME} <options>"
+  cmd_desc
+  echo ""
+  echo "create [OPTION]";
+  echo ""
+  echo "Options:";
+  echo "    -n    Name of Project. Required.";
+  echo "    -f    Main python file name. Required.";
+  echo "    -h    Print this help"
+  exit 1;
+}
+
+shift $(($OPTIND -1))
+
+while getopts "n:r:c:h" OPTION; do
+  case $OPTION in
+    n)
+      PROJECT_NAME=$OPTARG
+      ;;
+    f)
+      APPLICATION_FILE=$OPTARG
+      ;;
+    h|-help)
+      help
+      exit 1
+      ;;
+    *)
+      echo "Invalid parameter(s) or option(s)."
+      help
+      exit 1
+      ;;
+  esac
+done
+
+if [ ! -z "$PROJECT_NAME" ] && [ ! -z "$APPLICATION_FILE" ]; then
+  application_up
+fi

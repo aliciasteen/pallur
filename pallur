@@ -1,0 +1,37 @@
+#!/bin/bash -e
+
+CMD=`basename $0`
+export BASE_DIR="$(pwd)"
+
+help() {
+  echo "              _ _            ";
+  echo "  _ __   __ _| | |_   _ _ __ ";
+  echo " | '_ \ / _\` | | | | | | '__|";
+  echo " | |_) | (_| | | | |_| | |   ";
+  echo " | .__/ \__,_|_|_|\__,_|_|   ";
+  echo " |_|                         ";
+  echo "usage: ${CMD} <subcommand>"
+  for cmd in $(ls cmd)
+  do
+    printf "  %-10s   $(. cmd/${cmd} cmd_desc)" "${cmd}"
+    echo ""
+  done
+}
+
+main() {
+  if [ $# -lt 1 ]; then
+    help
+    exit 0
+  fi
+
+  SUBCOMMAND="$1"; shift
+
+  if [ ! -e "cmd/$SUBCOMMAND" ]; then
+    help
+    exit 1
+  fi
+
+  . "$BASE_DIR/cmd/$SUBCOMMAND" "$@"
+}
+
+main "$@"

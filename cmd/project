@@ -1,0 +1,26 @@
+#!bin/bash -e
+
+# Project information
+
+cmd_desc() {
+  echo "Get project information"
+}
+
+shift $(($OPTIND -1))
+SUBCOMMAND_OPT="${1:-help}"
+
+# Only shift if there are other parameters
+if [ $# -ge 1 ]; then
+    shift
+fi
+
+case ${SUBCOMMAND_OPT} in
+    "cmd_desc"|"help")
+        ${SUBCOMMAND_OPT} "$@"
+        ;;
+    *)
+        echo "Invalid parameter(s) or option(s)."
+        help
+        exit 1
+        ;;
+esac
