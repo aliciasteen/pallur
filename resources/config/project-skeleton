@@ -1,0 +1,28 @@
+%Project
+---
+
+project:
+    name: <>
+    description: <>
+    python_version: <>
+
+access:
+    developers:
+        - <name>
+        - <name>
+    users:
+        - <name>
+        - <name>
+    public: truefalse
+
+source:
+    url: <>
+    branch: <>
+
+configuration:
+    file: <>
+    parameters:
+        - param = a
+        - param2 = b
+    database:
+        name: <>
