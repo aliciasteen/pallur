@@ -1,0 +1,6 @@
+FROM python:<version>
+
+COPY <project> /src
+RUN pip install -r /src/requirements.txt
+EXPOSE <port>
+CMD ["python", "/usr/local/bin/app.py"]

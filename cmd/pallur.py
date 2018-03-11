@@ -8,6 +8,45 @@ app = Flask(__name__)
 def hello_world():
     return 'Hello world'
 
+@app.route('/api/users', methods=['POST'])
+def api_users():
+    return 'Users'
+
+@app.route('/api/<username>')
+def api_delete_user(username):
+    return 'Delted user: %s' % username
+
+@app.route('/api/projects', methods=['GET', 'POST'])
+def api_projects():
+    if request.method == 'GET':
+        return 'Projects'
+    if request.method == 'POST':
+        return 'Project create'
+
+class Project:
+    def __init__(self, name, status):
+        self.name = name
+        self.status = status
+
+@app.route('/api/projects/<project_name>')
+def api_project(project_name):
+    return yaml.dump(Project(project_name, 'active')
+
+@app.route('/api/projects/<project_name>/config')
+def api_project_config(project_name):
+    return 'Project config: %s' % project_name
+
+@app.route('/api/projects/<project_name>/code')
+def api_project_code(project_name):
+    return 'Project code: %s' % project_name
+
+@app.route('/api/projects/<project_name>/up')
+def api_project_up(project_name):
+    return 'Project up: %s' % project_name
+
+@app.route('/api/projects/<project_name>/down')
+def api_project_down(project_name):
+    return 'Project down: %s' % project_name
 
 @click.group()
 def pallur():
@@ -82,7 +121,7 @@ def check_credentials(username, password):
         click.echo(e)
         return 0
 
-def create_session
-    client = docker.from_env()
-    client.exec_run(cmd(etcdctl lease grant 3600))
-    client.exec_run(cmd(etcdctl set ))
+#def create_session():
+    #client = docker.from_env()
+    #client.exec_run(cmd(etcdctl lease grant 3600))
+    #client.exec_run(cmd(etcdctl set ))
