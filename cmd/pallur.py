@@ -1,12 +1,14 @@
 import click
 import ldap
-from flask import Flask
+from flask import Flask, request
+import jsonpickle
+from .project import Project
 
 app = Flask(__name__)
 
 @app.route('/api')
 def hello_world():
-    return 'Hello world'
+    return 'Hello world!'
 
 @app.route('/api/users', methods=['POST'])
 def api_users():
@@ -23,14 +25,9 @@ def api_projects():
     if request.method == 'POST':
         return 'Project create'
 
-class Project:
-    def __init__(self, name, status):
-        self.name = name
-        self.status = status
-
 @app.route('/api/projects/<project_name>')
 def api_project(project_name):
-    return yaml.dump(Project(project_name, 'active')
+    return jsonpickle.encode(Project(project_name, 'active'))
 
 @app.route('/api/projects/<project_name>/config')
 def api_project_config(project_name):
@@ -47,6 +44,12 @@ def api_project_up(project_name):
 @app.route('/api/projects/<project_name>/down')
 def api_project_down(project_name):
     return 'Project down: %s' % project_name
+
+@app.route('/api/login', methods=['POST'])
+def api_login():
+    error = None
+    json = request.get_json()
+    return check_credentials(json['username'], json['password'])
 
 @click.group()
 def pallur():
@@ -107,7 +110,6 @@ def check_credentials(username, password):
     ldap_server="ldap://0.0.0.0:389"
     l = ldap.initialize(ldap_server)
     username = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
-    password = password
     try:
       l.simple_bind_s(username, password)
       valid = True
@@ -116,7 +118,7 @@ def check_credentials(username, password):
         click.echo("Incorrect Password")
         return 0
     except ldap.LDAPError as e:
-        click.echo('LDAP Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+        click.echo('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
     except Exception as e:
         click.echo(e)
         return 0

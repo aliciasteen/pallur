@@ -1,9 +1,9 @@
+import os
+from os.path import expanduser
 import click
 import requests
 
 api_root = 'http://server.pallur.cloud:5000/api/'
-
-
 
 @click.group()
 def pallur_client():
@@ -60,12 +60,21 @@ def list():
     """project list"""
     click.echo('project list')
 
-@user.command()
-@click.option('--username', prompt=True, help='Login username')
-@click.password_option()
-def login(username, password, server_address):
-    """login to project"""
-    click.echo('login')
+@pallur_client.command()
+@click.option('--username', prompt=True, help='username')
+@click.password_option(confirmation_prompt=False)
+def login(username, password):
+    """Login to Pallur"""
+    r = requests.post(api_root + 'login', json={'username': username, 'password': password})
+    click.echo(r.status_code)
+    if r.status_code == 401:
+        click.echo("Login failed please try again")
+    else:
+        session_id = (r.json()['session_id'])
+        file_location = expanduser("~")
+        session_file = open(os.path.join(file_location, ".pallursession"),"w+")
+        session_file.write(session_id)
+        session_file.close
 
 if __name__ == '__main__':
     pallur_client()
