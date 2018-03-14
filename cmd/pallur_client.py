@@ -1,7 +1,8 @@
 import os
-from os.path import expanduser
+from os.path import expanduser, realpath
 import click
 import requests
+import json
 
 api_root = 'http://server.pallur.cloud:5000/api/'
 
@@ -20,22 +21,33 @@ def user():
     """User login, logout, management and deletion"""
     pass
 
+#TODO Send configuration file, and project name
 @project.command()
-@click.option('--name', default='NewProject', help='Project name')
-def create(name):
+@click.option('--name', '-n' , default='NewProject', help='Project name', prompt=True)
+@click.option('--configuration', type=click.File('r'), help='Path of configuration file', prompt='Configuration file path')
+def create(name, configuration):
     """Create new project"""
+    headers = {'session_id': session_id()}
+    url = api_root + 'projects'
+    data = configuration.read()
+    click.echo(data)
+    r = requests.post(url, data=data, headers=headers)
+    #click.echo(json)
+    #click.echo(configuration.name)
+    #click.echo(configuration.read())
     click.echo('Initalising project %s' % name)
 
 @project.command()
-@click.option('--name')
+@click.option('--name', help='Project Name', prompt=True)
 def status(name):
-    r = requests.get(api_root + 'projects/' + name)
-    click.echo(r.status_code)
-    json = r.json()
-    click.echo(json['name'])
-
+    headers = {'session_id': session_id()}
+    url = api_root + 'projects/' + name
+    r = requests.get(url, headers=headers)
+    check_status_code(r.status_code)
+    click.echo(json.dumps(r.json(), indent=4, separators=(',', ': ')))
+    
 @project.command()
-@click.option('--name', default='NewProject', help='Project name')
+@click.option('--name', default='NewProject', help='Project name') 
 def up(name):
     """Project up"""
     click.echo('project up %s' % name)
@@ -58,7 +70,27 @@ def update():
 @project.command()
 def list():
     """project list"""
+    click.echo(session_id())
     click.echo('project list')
+
+def session_id():
+    try:
+        file_location = expanduser("~")
+        session_file = open(os.path.join(file_location, ".pallursession"),"r")
+        session_id = session_file.read()
+        return session_id
+    except:
+        return
+
+def check_status_code(status_code):
+    if status_code == 401:
+        click.echo(click.style("You are not logged in or session may have expired. Please login in.", fg='red'))
+        quit()
+    elif status_code == 200:
+        pass
+    else:
+        click.echo(click.style("%s An error has occured." % status_code, fg='red'))
+        quit()
 
 @pallur_client.command()
 @click.option('--username', prompt=True, help='username')
