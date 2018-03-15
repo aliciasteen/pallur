@@ -3,6 +3,7 @@ from os.path import expanduser, realpath
 import click
 import requests
 import json
+import click_spinner
 
 api_root = 'http://server.pallur.cloud:5000/api/'
 
@@ -30,12 +31,14 @@ def create(name, configuration):
     headers = {'session_id': session_id()}
     url = api_root + 'projects'
     data = configuration.read()
-    click.echo(data)
-    r = requests.post(url, data=data, headers=headers)
-    #click.echo(json)
-    #click.echo(configuration.name)
-    #click.echo(configuration.read())
     click.echo('Initalising project %s' % name)
+    with click_spinner.spinner():
+        try:
+            r = requests.post(url, data=data, headers=headers)
+            check_status_code(r.status_code)
+        except requests.exceptions.ConnectionError as e:
+            click.echo("Connection error. Please wait and try again.")        
+    
 
 @project.command()
 @click.option('--name', help='Project Name', prompt=True)
@@ -70,7 +73,6 @@ def update():
 @project.command()
 def list():
     """project list"""
-    click.echo(session_id())
     click.echo('project list')
 
 def session_id():
@@ -98,13 +100,13 @@ def check_status_code(status_code):
 def login(username, password):
     """Login to Pallur"""
     r = requests.post(api_root + 'login', json={'username': username, 'password': password})
-    click.echo(r.status_code)
     if r.status_code == 401:
         click.echo("Login failed please try again")
     else:
         session_id = (r.json()['session_id'])
         file_location = expanduser("~")
-        session_file = open(os.path.join(file_location, ".pallursession"),"w+")
+        session_file = open(os.path.join(file_location, ".pallursession"),"w")
+        click.echo(session_id)
         session_file.write(session_id)
         session_file.close
 

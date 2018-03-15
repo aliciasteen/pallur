@@ -1,6 +1,6 @@
-FROM python:<version>
+FROM python:${python_version}
 
-COPY <project> /src
+COPY /project-data/${project_name} /src
 RUN pip install -r /src/requirements.txt
-EXPOSE <port>
-CMD ["python", "/usr/local/bin/app.py"]
+EXPOSE ${port}
+CMD ["python", "/src/${main_file}"]

@@ -1,23 +1,23 @@
-version: '3'
+version: '3.5'
 services:
   application:
-    container_name: project-${PROJECT_NAME}
-    build:
-      context: .
-    env_file: .env
+    container_name: project-${project_name}
+    image: ${image}
+    #env_file: .env
     networks:
       - internal
       - proxy
     expose:
-      - <port>
+      - ${port}
     labels:
-      traefik.backend: ${PROJECT_NAME   }
+      traefik.backend: ${project_name}
       traefik.enable: "true"
-      traefik.frontend.rule: "Host:server.pallur.cloud; PathStrip:/helloworld/"
+      traefik.frontend.rule: "Host:${project_name}.server.pallur.cloud"
       traefik.docker.network: "proxy"
-      traefik.port: "8000"
+      traefik.port: ${port}
 networks:
   internal:
+    name: ${project_name}
     external: false
   proxy:
     external: true

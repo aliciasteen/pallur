@@ -21,6 +21,7 @@ source:
 
 configuration:
     file: <>
+    port: <>
     parameters:
         - param = a
         - param2 = b
