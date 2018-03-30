@@ -8,15 +8,18 @@ address = ":8080"
 [entryPoints]
   [entryPoints.http]
   address = ":80"
-    [entryPoints.http.redirect]
-      entryPoint = "https"
   [entryPoints.https]
   address = ":443"
     [entryPoints.https.tls]
 
 [acme]
-email = "aliciahsteen@gmail.com"
+email = "alicia@aliciasteen.com"
 storage = "acme.json"
 entryPoint = "https"
-onHostRule = true
-onDemand = false
+  [acme.httpChallenge]
+  entryPoint = "http"
+OnHostRule = true
+onDemand = true
+
+[[acme.domains]]
+  main = "server.pallur.cloud"

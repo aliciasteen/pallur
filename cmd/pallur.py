@@ -8,6 +8,7 @@ import git
 import os
 import shutil
 from subprocess import call
+import subprocess
 from string import Template
 from .project import Project
 
@@ -210,21 +211,45 @@ def create_project_image(project_name):
         temp_dockerfile = open("/project-data/%s/Dockerfile" % project_name, 'w')
         temp_dockerfile.write(result)
         temp_dockerfile.close()
-    except :
-        pass
+    except Exception as e:
+        click.echo(e)
+        return
 
     # Build docker image
     click.echo("Building docker image")
-    docker_image = client.images.build(path='/project-data/test', tag='test:0.0.1', rm='true')[0]
-    click.echo(docker_image.tags)
+    #docker_image = client.images.build(path='/project-data/test', tag='test:0.0.1', rm='true')[0]
+    #click.echo(docker_image.tags)
+
+
+
+    # Create docker-compose file
+    dockercompose = open(os.path.join(pallur_home, "projectskeleton/docker-compose.yml"),"r")
+    src = Template(dockercompose.read())
+    dockercompose.close()
+    # # Substitute values
+    d = {'image':'test', 'tag':'0.0.1', 'port':8000, 'project_name':project_name}
+    result = src.substitute(d)
+ 
+    # Save temp docker-compose file
+    try:
+        temp_dockercompose = open("/project-data/%s/docker-compose.yml" % project_name, 'w')
+        temp_dockercompose.write(result)
+        temp_dockercompose.close()
+    except Exception as e:
+        click.echo(e)
+        return
 
     # Deploys docker-compose
-    compose_file = "%s/projectskeleton/docker-compose.yml" % pallur_home
-    docker_tag = docker_image.tags[0]
+    compose_file = "/project-data/%s/docker-compose.yml" % project_name
+    #docker_tag = docker_image.tags[0]
+    docker_tag = 'test:0.0.1'
     environment = "project_name=%s image=%s port=8000" % (project_name, docker_tag)
-    click.echo("Environment: %s    Compose File: %s" % (environment, compose_file))
+    #click.echo("Environment: %s    Compose File: %s" % (environment, compose_file))
     try:
-        call([environment, 'docker-compose', '-f', compose_file, '-p', project_name, '-d'])
+        #call([environment, 'docker-compose', '-f', compose_file, '-p', project_name, 'up', '-d'])
+        output = call(['docker-compose', '-f', compose_file, 'up', '-d'])
+        click.echo(output)
+        #call(['docker-compose', '-f', '/root/pallur/projectskeleton/docker-compose.yml', '-p', 'test', 'up', '-d'])
     except Exception as e:
         click.echo(e)
     shutil.rmtree(path)
