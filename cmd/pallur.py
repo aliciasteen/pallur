@@ -31,6 +31,11 @@ def api_delete_user(username):
     api_check_active_session()
     return 'Deleted user: %s' % username
 
+@app.route('/api/<username>/groups')
+def api_user_groups(username):
+    api_check_active_session()
+    return check_group(request.headers['session_id'], 'not')
+
 @app.route('/api/projects', methods=['GET', 'POST'])
 def api_projects():
     api_check_active_session()
@@ -106,6 +111,30 @@ def check_credentials(username, password):
         click.echo(e)
         return "error"
 
+def check_group(session_id, project_name):
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    admin_user = "cn=admin,dc=pallur,dc=cloud"
+    admin_pass = "admin"
+    l.simple_bind_s(admin_user, admin_pass)
+    username = get_username_from_session(session_id)
+    click.echo(username)
+    search_filter = "(&(objectClass=posixGroup)(cn=%s)(memberUid=%s))" % (project_name, username)
+    
+    try:
+        results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['memberUid'])
+        if results:
+            return "In group"
+        else:
+            return "Not in group"
+        return str(results)
+    #except ldap.LDAPError as e:
+    #    return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+    except Exception as e:
+        click.echo(e)
+    #    return "error"
+    return "this"
+
 def create_session(username):
     try:
         client = docker.from_env()
@@ -114,7 +143,7 @@ def create_session(username):
         click.echo('exec_run_result: %s' % exec_run_result[1])
         lease_id = exec_run_result[1].split()[1]
         click.echo(lease_id)
-        container.exec_run("etcdctl put --lease=%s test %s" % (lease_id, username))
+        container.exec_run("etcdctl put --lease=%s %s %s" % (lease_id, lease_id, username))
         return lease_id
     except Exception as e:
         click.echo(e)
@@ -129,6 +158,15 @@ def check_active_session(session_id):
             return -1
         else:
             return 1
+    except Exception as e:
+        click.echo(e)
+
+def get_username_from_session(session_id):
+    try:
+        client = docker.from_env()
+        container = client.containers.get('etcd')
+        username = container.exec_run("etcdctl get %s -w=simple --print-value-only" % session_id)[1].replace("\n", "")
+        return username
     except Exception as e:
         click.echo(e)
 
@@ -217,8 +255,10 @@ def create_project_image(project_name):
 
     # Build docker image
     click.echo("Building docker image")
-    #docker_image = client.images.build(path='/project-data/test', tag='test:0.0.1', rm='true')[0]
-    #click.echo(docker_image.tags)
+    path="/project-data/%s" % project_name
+    tag="%s:0.0.1" % project_name
+    docker_image = client.images.build(path=path, tag=tag, rm='true')[0]
+    click.echo(docker_image.tags)
 
 
 
@@ -241,14 +281,14 @@ def create_project_image(project_name):
 
     # Deploys docker-compose
     compose_file = "/project-data/%s/docker-compose.yml" % project_name
-    #docker_tag = docker_image.tags[0]
-    docker_tag = 'test:0.0.1'
+    docker_tag = docker_image.tags[0]
+    #docker_tag = 'test:0.0.1'
     environment = "project_name=%s image=%s port=8000" % (project_name, docker_tag)
     #click.echo("Environment: %s    Compose File: %s" % (environment, compose_file))
     try:
         #call([environment, 'docker-compose', '-f', compose_file, '-p', project_name, 'up', '-d'])
-        output = call(['docker-compose', '-f', compose_file, 'up', '-d'])
-        click.echo(output)
+        click.echo(call(['docker-compose', '-f', compose_file, 'up', '-d']))
+        
         #call(['docker-compose', '-f', '/root/pallur/projectskeleton/docker-compose.yml', '-p', 'test', 'up', '-d'])
     except Exception as e:
         click.echo(e)

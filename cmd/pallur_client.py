@@ -22,6 +22,15 @@ def user():
     """User login, logout, management and deletion"""
     pass
 
+@user.command()
+@click.option('--name', help='Username', prompt=True)
+def user_groups(name):
+    headers = {'session_id': session_id()}
+    url = api_root + name + '/groups'
+    r = requests.get(url, headers=headers)
+    check_status_code(r.status_code)
+    click.echo(r.text)
+
 #TODO Send configuration file, and project name
 @project.command()
 @click.option('--name', '-n' , default='NewProject', help='Project name', prompt=True)
