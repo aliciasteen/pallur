@@ -45,14 +45,13 @@ def api_projects():
         json = request.get_json(force=True)
         add_update_project_configuration(json)
         project_name = json['project']['name']
-        create_project_image(project_name)
+        create_project(project_name)
         return 'Project created'
 
 @app.route('/api/projects/<project_name>')
 def api_project(project_name):
     api_check_active_session()
     return get_project_configuration(project_name)
-    #return jsonpickle.encode(Project(project_name, 'active'))
 
 @app.route('/api/projects/<project_name>/config')
 def api_project_config(project_name):
@@ -216,7 +215,12 @@ def get_project_configuration(project_name):
     except Exception as e:
         click.echo(e)
 
-def create_project_image(project_name):
+def create_project(project_name):  
+    build_docker_image(project_name)
+    create_docker_compose(project_name)
+    docker_compose_up(project_name)  
+
+def build_docker_image(project_name):
     # Clone repository   
     path = '/project-data/%s/resources' % project_name
     if not os.path.exists(path):
@@ -240,14 +244,12 @@ def create_project_image(project_name):
     port = etcd_get(project_name, "configuration/port")
     main_file = etcd_get(project_name, "configuration/file")
     d = {'python_version':python_version, 'port':8000, 'main_file':'app.py', 'project_name':project_name}
-    result = src.substitute(d)
-    click.echo("Changed file: ")
-    click.echo(result)
+    substitute_dockerfile = src.substitute(d)
 
     # Save temp dockerfile
     try:
         temp_dockerfile = open("/project-data/%s/Dockerfile" % project_name, 'w')
-        temp_dockerfile.write(result)
+        temp_dockerfile.write(substitute_dockerfile)
         temp_dockerfile.close()
     except Exception as e:
         click.echo(e)
@@ -258,10 +260,35 @@ def create_project_image(project_name):
     path="/project-data/%s" % project_name
     tag="%s:0.0.1" % project_name
     docker_image = client.images.build(path=path, tag=tag, rm='true')[0]
-    click.echo(docker_image.tags)
+    etcd_set(project_name, "image_tag", docker_image.tags.split(':')[1])
+
+    # Delete cloned repo
+    shutil.rmtree(path)
+
+def docker_compose_up(project_name):
+    # Deploys docker-compose
+    compose_file = "/project-data/%s/docker-compose.yml" % project_name
+    docker_tag = "%s:%s" % (project_name ,etcd_get(project_name, "image_tag"))
+    port = etcd_get(project_name, "configuration/port")
+    environment = "project_name=%s image=%s port=%s" % (project_name, docker_tag, port)
+    try:
+        click.echo(call(['docker-compose', '-f', compose_file, 'up', '-d']))
+    except Exception as e:
+        click.echo(e)
+    
+def docker_compose_down(project_name):
+    # Deploys docker-compose
+    compose_file = "/project-data/%s/docker-compose.yml" % project_name
+    docker_tag = "%s:%s" % (project_name ,etcd_get(project_name, "image_tag"))
+    port = etcd_get(project_name, "configuration/port")
+    environment = "project_name=%s image=%s port=%s" % (project_name, docker_tag, port)
+    try:
+        click.echo(call(['docker-compose', '-f', compose_file, 'down']))
+    except Exception as e:
+        click.echo(e)
 
 
-
+def create_docker_compose(project_name):
     # Create docker-compose file
     dockercompose = open(os.path.join(pallur_home, "projectskeleton/docker-compose.yml"),"r")
     src = Template(dockercompose.read())
@@ -275,21 +302,7 @@ def create_project_image(project_name):
         temp_dockercompose = open("/project-data/%s/docker-compose.yml" % project_name, 'w')
         temp_dockercompose.write(result)
         temp_dockercompose.close()
+        return
     except Exception as e:
         click.echo(e)
         return
-
-    # Deploys docker-compose
-    compose_file = "/project-data/%s/docker-compose.yml" % project_name
-    docker_tag = docker_image.tags[0]
-    #docker_tag = 'test:0.0.1'
-    environment = "project_name=%s image=%s port=8000" % (project_name, docker_tag)
-    #click.echo("Environment: %s    Compose File: %s" % (environment, compose_file))
-    try:
-        #call([environment, 'docker-compose', '-f', compose_file, '-p', project_name, 'up', '-d'])
-        click.echo(call(['docker-compose', '-f', compose_file, 'up', '-d']))
-        
-        #call(['docker-compose', '-f', '/root/pallur/projectskeleton/docker-compose.yml', '-p', 'test', 'up', '-d'])
-    except Exception as e:
-        click.echo(e)
-    shutil.rmtree(path)
