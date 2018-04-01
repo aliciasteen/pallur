@@ -15,6 +15,9 @@ from .project import Project
 app = Flask(__name__)
 pallur_home = "/root/pallur"
 
+ldap_admin_user = "cn=admin,dc=pallur,dc=cloud"
+ldap_admin_pass = "password"
+
 # API routes
 
 @app.route('/api')
@@ -26,9 +29,16 @@ def api_users():
     api_check_active_session()
     return 'Users'
 
-@app.route('/api/<username>')
+@app.route('/api/<username>/create')
 def api_delete_user(username):
     api_check_active_session()
+    ldap_add_user(username, password)
+    return 'Deleted user: %s' % username
+
+@app.route('/api/<username>/delete')
+def api_delete_user(username):
+    api_check_active_session()
+    ldap_delete_user(username, password)
     return 'Deleted user: %s' % username
 
 @app.route('/api/<username>/groups')
@@ -113,11 +123,8 @@ def check_credentials(username, password):
 def check_group(session_id, project_name):
     ldap_server="ldap://0.0.0.0:389"
     l = ldap.initialize(ldap_server)
-    admin_user = "cn=admin,dc=pallur,dc=cloud"
-    admin_pass = "admin"
-    l.simple_bind_s(admin_user, admin_pass)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
     username = get_username_from_session(session_id)
-    click.echo(username)
     search_filter = "(&(objectClass=posixGroup)(cn=%s)(memberUid=%s))" % (project_name, username)
     
     try:
@@ -131,8 +138,58 @@ def check_group(session_id, project_name):
     #    return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
     except Exception as e:
         click.echo(e)
-    #    return "error"
+        return "error"
     return "this"
+
+# Add ldap group
+def ldap_add_group(project_name):
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    dn = "cn=%s,ou=groups,dc=pallur,dc=cloud" % project_name
+    modlist = {
+           "objectClass": ["inetOrgPerson", "posixAccount", "shadowAccount"],
+           "cn": ["Maarten De Paepe"],
+           "displayName": ["Maarten De Paepe"],
+           "uidNumber": ["5000"],
+           "gidNumber": ["10000"]
+          }
+    l.add(dn, modlist)
+
+# Add ldap user
+def ldap_add_user(project_name, username, password):
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    dn = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
+    modlist = {
+           "objectClass": ["inetOrgPerson", "posixAccount", "shadowAccount"],
+           "cn": ["Maarten De Paepe"],
+           "displayName": ["Maarten De Paepe"],
+           "uidNumber": ["5000"],
+           "gidNumber": ["10000"]
+          }
+    l.add(dn, modlist)
+
+# Add ldap user to group
+def ldap_add_user(project_name):
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    dn = "cn=%s,ou=group,dc=pallur,dc=cloud" % project_name
+    modlist = {
+           "objectClass": ["inetOrgPerson", "posixAccount", "shadowAccount"],
+           "cn": ["Maarten De Paepe"],
+          }
+    l.add(dn, modlist)
+
+def ldap_delete_user(username, password):
+    check_credentials(username, password)
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    dn = "uid=maarten,ou=people,dc=example,cd=com"
+    con.delete_s(dn)
 
 def create_session(username):
     try:
@@ -256,6 +313,8 @@ def build_docker_image(project_name):
         return
 
     # Build docker image
+    # Should use commit ID as tag
+
     click.echo("Building docker image")
     path="/project-data/%s" % project_name
     tag="%s:0.0.1" % project_name
@@ -265,6 +324,7 @@ def build_docker_image(project_name):
     # Delete cloned repo
     shutil.rmtree(path)
 
+# Start project
 def docker_compose_up(project_name):
     # Deploys docker-compose
     compose_file = "/project-data/%s/docker-compose.yml" % project_name
@@ -276,6 +336,7 @@ def docker_compose_up(project_name):
     except Exception as e:
         click.echo(e)
     
+# Stop project
 def docker_compose_down(project_name):
     # Deploys docker-compose
     compose_file = "/project-data/%s/docker-compose.yml" % project_name
@@ -288,6 +349,7 @@ def docker_compose_down(project_name):
         click.echo(e)
 
 
+# Create docker compose file
 def create_docker_compose(project_name):
     # Create docker-compose file
     dockercompose = open(os.path.join(pallur_home, "projectskeleton/docker-compose.yml"),"r")
