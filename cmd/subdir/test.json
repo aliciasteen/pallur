@@ -1,0 +1,33 @@
+{
+    "project": {
+      "name": "alicia",
+      "description": "Test project",
+      "python_version": 2
+    },
+    "access": {
+      "developers": [
+        "alice",
+        "bob"
+      ],
+      "users": [
+        "charles",
+        "desmond"
+      ],
+      "public": true
+    },
+    "source": {
+      "url": "https://github.com/aliciasteen/python-example",
+      "branch": "master"
+    },
+    "configuration": {
+      "main_file": "app.py",
+      "port": 8000,
+      "parameters": [
+        "param = a",
+        "param2 = b"
+      ],
+      "database": {
+        "name": "mysql"
+      }
+    }
+  }
