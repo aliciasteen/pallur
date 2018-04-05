@@ -99,7 +99,6 @@ def check_credentials(username, password):
     username = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
     try:
       l.simple_bind_s(username, password)
-      valid = True
       return "Login successful"
     except ldap.INVALID_CREDENTIALS:
         click.echo("Incorrect Password")
@@ -243,7 +242,7 @@ def build_docker_image(project_name):
     python_version = etcd_get(project_name, "project/python_version")
     port = etcd_get(project_name, "configuration/port")
     main_file = etcd_get(project_name, "configuration/file")
-    d = {'python_version':python_version, 'port':8000, 'main_file':'app.py', 'project_name':project_name}
+    d = {'python_version':python_version, 'port':port, 'main_file':main_file, 'project_name':project_name}
     substitute_dockerfile = src.substitute(d)
 
     # Save temp dockerfile
@@ -268,9 +267,6 @@ def build_docker_image(project_name):
 def docker_compose_up(project_name):
     # Deploys docker-compose
     compose_file = "/project-data/%s/docker-compose.yml" % project_name
-    docker_tag = "%s:%s" % (project_name ,etcd_get(project_name, "image_tag"))
-    port = etcd_get(project_name, "configuration/port")
-    environment = "project_name=%s image=%s port=%s" % (project_name, docker_tag, port)
     try:
         click.echo(call(['docker-compose', '-f', compose_file, 'up', '-d']))
     except Exception as e:
@@ -279,9 +275,6 @@ def docker_compose_up(project_name):
 def docker_compose_down(project_name):
     # Deploys docker-compose
     compose_file = "/project-data/%s/docker-compose.yml" % project_name
-    docker_tag = "%s:%s" % (project_name ,etcd_get(project_name, "image_tag"))
-    port = etcd_get(project_name, "configuration/port")
-    environment = "project_name=%s image=%s port=%s" % (project_name, docker_tag, port)
     try:
         click.echo(call(['docker-compose', '-f', compose_file, 'down']))
     except Exception as e:
