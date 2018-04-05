@@ -18,25 +18,32 @@ pallur_home = "/root/pallur"
 ldap_admin_user = "cn=admin,dc=pallur,dc=cloud"
 ldap_admin_pass = "password"
 
-# API routes
+# ----------------------------------------------------------
+# Flask API routes
+# ----------------------------------------------------------
 
 @app.route('/api')
 def hello_world():
-    return 'Hello world!'
+    return 'Pallur'
+
+# ----------------------------------------------------------
+# Users
+# ----------------------------------------------------------
 
 @app.route('/api/users', methods=['POST'])
 def api_users():
     api_check_active_session()
     return 'Users'
 
+
 @app.route('/api/<username>/create')
-def api_delete_user(username):
+def api_add_user(username, password, project_name):
     api_check_active_session()
-    ldap_add_user(username, password)
-    return 'Deleted user: %s' % username
+    ldap_add_user(username, password, project_name)
+    return 'Added user: %s' % username
 
 @app.route('/api/<username>/delete')
-def api_delete_user(username):
+def api_delete_user(username, password):
     api_check_active_session()
     ldap_delete_user(username, password)
     return 'Deleted user: %s' % username
@@ -45,6 +52,10 @@ def api_delete_user(username):
 def api_user_groups(username):
     api_check_active_session()
     return check_group(request.headers['session_id'], 'not')
+
+# ----------------------------------------------------------
+# Projects
+# ----------------------------------------------------------
 
 @app.route('/api/projects', methods=['GET', 'POST'])
 def api_projects():
@@ -83,6 +94,16 @@ def api_project_down(project_name):
     api_check_active_session()
     return 'Project down: %s' % project_name
 
+
+
+@app.route('/api/sessiontest')
+def api_session_test():
+    api_check_active_session()
+    return "Active session"
+
+# ----------------------------------------------------------
+# Login
+# ----------------------------------------------------------
 @app.route('/api/login', methods=['POST'])
 def api_login():
     #click.echo("JSON Message: " + json.dumps(request.json))
@@ -91,18 +112,61 @@ def api_login():
     session_id = create_session(json['username'])
     return Response(jsonpickle.encode({'session_id': session_id}), status=200, mimetype='application/json')
 
-@app.route('/api/sessiontest')
-def api_session_test():
-    api_check_active_session()
-    return "Active session"
-
+# ----------------------------------------------------------
+# ----------------------------------------------------------
 # Methods
+# ----------------------------------------------------------
+
+# ----------------------------------------------------------
+# User authenitcation methods
+# ----------------------------------------------------------
+
+# ----------------------------------------------------------
+# Sessions
+def create_session(username):
+    try:
+        client = docker.from_env()
+        container = client.containers.get('etcd')
+        exec_run_result = container.exec_run("etcdctl lease grant 3600")
+        click.echo('exec_run_result: %s' % exec_run_result[1])
+        lease_id = exec_run_result[1].split()[1]
+        click.echo(lease_id)
+        container.exec_run("etcdctl put --lease=%s %s %s" % (lease_id, lease_id, username))
+        return lease_id
+    except Exception as e:
+        click.echo(e)
 
 def api_check_active_session():
     session_id = request.headers['session_id']
     if check_active_session(session_id) != 1:
         abort(401)
 
+def check_active_session(session_id):
+    try:
+        client = docker.from_env()
+        container = client.containers.get('etcd')
+        exec_run_result = container.exec_run("etcdctl lease timetolive --keys %s" % session_id)
+        if "remaining(-1s)" in exec_run_result[1]:
+            click.echo("Session %s does not exist or is expired" % session_id)
+            return -1
+        else:
+            return 1
+    except Exception as e:
+        click.echo(e)
+
+def get_username_from_session(session_id):
+    try:
+        client = docker.from_env()
+        container = client.containers.get('etcd')
+        username = container.exec_run("etcdctl get %s -w=simple --print-value-only" % session_id)[1].replace("\n", "")
+        return username
+    except Exception as e:
+        click.echo(e)
+
+# ----------------------------------------------------------
+# LDAP
+
+# Check login to ldap
 def check_credentials(username, password):
     ldap_server="ldap://0.0.0.0:389"
     l = ldap.initialize(ldap_server)
@@ -120,6 +184,7 @@ def check_credentials(username, password):
         click.echo(e)
         return "error"
 
+# Check user is in group
 def check_group(session_id, project_name):
     ldap_server="ldap://0.0.0.0:389"
     l = ldap.initialize(ldap_server)
@@ -172,7 +237,7 @@ def ldap_add_user(project_name, username, password):
     l.add(dn, modlist)
 
 # Add ldap user to group
-def ldap_add_user(project_name):
+def ldap_add_user_to_group(username, password, project_name):
     ldap_server="ldap://0.0.0.0:389"
     l = ldap.initialize(ldap_server)
     l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
@@ -183,48 +248,21 @@ def ldap_add_user(project_name):
           }
     l.add(dn, modlist)
 
+# Delete user from LDAP
 def ldap_delete_user(username, password):
     check_credentials(username, password)
     ldap_server="ldap://0.0.0.0:389"
     l = ldap.initialize(ldap_server)
     l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
     dn = "uid=maarten,ou=people,dc=example,cd=com"
-    con.delete_s(dn)
+    l.delete_s(dn)
 
-def create_session(username):
-    try:
-        client = docker.from_env()
-        container = client.containers.get('etcd')
-        exec_run_result = container.exec_run("etcdctl lease grant 3600")
-        click.echo('exec_run_result: %s' % exec_run_result[1])
-        lease_id = exec_run_result[1].split()[1]
-        click.echo(lease_id)
-        container.exec_run("etcdctl put --lease=%s %s %s" % (lease_id, lease_id, username))
-        return lease_id
-    except Exception as e:
-        click.echo(e)
+# ----------------------------------------------------------
+# Project methods
+# ----------------------------------------------------------
 
-def check_active_session(session_id):
-    try:
-        client = docker.from_env()
-        container = client.containers.get('etcd')
-        exec_run_result = container.exec_run("etcdctl lease timetolive --keys %s" % session_id)
-        if "remaining(-1s)" in exec_run_result[1]:
-            click.echo("Session %s does not exist or is expired" % session_id)
-            return -1
-        else:
-            return 1
-    except Exception as e:
-        click.echo(e)
-
-def get_username_from_session(session_id):
-    try:
-        client = docker.from_env()
-        container = client.containers.get('etcd')
-        username = container.exec_run("etcdctl get %s -w=simple --print-value-only" % session_id)[1].replace("\n", "")
-        return username
-    except Exception as e:
-        click.echo(e)
+# ----------------------------------------------------------
+# ETCD methods
 
 def add_update_project_configuration(json):
     try:
@@ -271,6 +309,9 @@ def get_project_configuration(project_name):
         return json.dumps(data)
     except Exception as e:
         click.echo(e)
+
+# ----------------------------------------------------------
+# Docker methods
 
 def create_project(project_name):  
     build_docker_image(project_name)
