@@ -1,5 +1,6 @@
 import click
 import ldap
+import ldap.modlist
 from flask import Flask, request, Response, abort
 import jsonpickle
 import json
@@ -16,7 +17,8 @@ app = Flask(__name__)
 pallur_home = "/root/pallur"
 
 ldap_admin_user = "cn=admin,dc=pallur,dc=cloud"
-ldap_admin_pass = "password"
+ldap_admin_pass = "admin"
+ldap_server="ldap://0.0.0.0:389"
 
 # ----------------------------------------------------------
 # Flask API routes
@@ -35,23 +37,27 @@ def api_users():
     api_check_active_session()
     return 'Users'
 
-
-@app.route('/api/<username>/create')
-def api_add_user(username, password, project_name):
-    api_check_active_session()
-    ldap_add_user(username, password, project_name)
-    return 'Added user: %s' % username
-
-@app.route('/api/<username>/delete')
-def api_delete_user(username, password):
-    api_check_active_session()
-    ldap_delete_user(username, password)
-    return 'Deleted user: %s' % username
+# Add user to LDAP
+@app.route('/api/<username>', methods=['POST'])
+def api_add_user(username):
+    json = request.get_json(force=True)
+    return ldap_add_user(json['username'], json['password'])
+    
+@app.route('/api/<username>/delete', methods=['POST'])
+def api_delete_user(username):
+    json = request.get_json(force=True)
+    return ldap_delete_user(json['username'], json['password'])
 
 @app.route('/api/<username>/groups')
 def api_user_groups(username):
     api_check_active_session()
     return check_group(request.headers['session_id'], 'not')
+
+@app.route('/api/<username>/group', methods=['POST'])
+def api_add_user_to_group(username):
+    json = request.get_json(force=True)
+    click.echo("api_add_user_to_group")
+    return ldap_add_user_to_group(username, json['project_name'])
 
 # ----------------------------------------------------------
 # Projects
@@ -137,9 +143,13 @@ def create_session(username):
         click.echo(e)
 
 def api_check_active_session():
-    session_id = request.headers['session_id']
-    if check_active_session(session_id) != 1:
-        abort(401)
+    try:
+        session_id = request.headers['session_id']
+        if check_active_session(session_id) != 1:
+            abort(401)
+    except Exception as e:
+        bad_request(e)
+    
 
 def check_active_session(session_id):
     try:
@@ -168,7 +178,6 @@ def get_username_from_session(session_id):
 
 # Check login to ldap
 def check_credentials(username, password):
-    ldap_server="ldap://0.0.0.0:389"
     l = ldap.initialize(ldap_server)
     username = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
     try:
@@ -186,7 +195,6 @@ def check_credentials(username, password):
 
 # Check user is in group
 def check_group(session_id, project_name):
-    ldap_server="ldap://0.0.0.0:389"
     l = ldap.initialize(ldap_server)
     l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
     username = get_username_from_session(session_id)
@@ -199,16 +207,29 @@ def check_group(session_id, project_name):
         else:
             return "Not in group"
         return str(results)
-    #except ldap.LDAPError as e:
-    #    return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+    except ldap.LDAPError as e:
+        return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
     except Exception as e:
         click.echo(e)
         return "error"
     return "this"
 
+# Gets maximum UID number from LDAP
+def ldap_max_uid():
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    search_filter = "(&(objectClass=posixAccount))"
+    try:
+        results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['uidNumber'])
+        return max(x[1]['uidNumber'][0] for x in results)
+    except ldap.LDAPError as e:
+        return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+    except Exception as e:
+        click.echo(e)
+        return 1000
+
 # Add ldap group
 def ldap_add_group(project_name):
-    ldap_server="ldap://0.0.0.0:389"
     l = ldap.initialize(ldap_server)
     l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
     dn = "cn=%s,ou=groups,dc=pallur,dc=cloud" % project_name
@@ -222,40 +243,65 @@ def ldap_add_group(project_name):
     l.add(dn, modlist)
 
 # Add ldap user
-def ldap_add_user(project_name, username, password):
-    ldap_server="ldap://0.0.0.0:389"
+def ldap_add_user(username, password):
     l = ldap.initialize(ldap_server)
+    click.echo("GETS HERE")
     l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
-    dn = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
+    dn = 'cn=%s,ou=users,dc=pallur,dc=cloud' % username
+    username = str (username)
+    password = str (password)
+    uid = str ((int (ldap_max_uid())) + 1)
     modlist = {
-           "objectClass": ["inetOrgPerson", "posixAccount", "shadowAccount"],
-           "cn": ["Maarten De Paepe"],
-           "displayName": ["Maarten De Paepe"],
-           "uidNumber": ["5000"],
-           "gidNumber": ["10000"]
-          }
-    l.add(dn, modlist)
+        "objectClass": ["inetOrgPerson", "posixAccount", "top"],
+        "sn": [username],
+        "cn": [username],
+        "uid": [username],
+        "uidNumber": [uid],
+        "userpassword": [password],
+        "gidNumber": ["500"],
+        "homeDirectory": ["/home/%s" % username]
+        }
+    try:
+        result = l.add_s(dn, ldap.modlist.addModlist(modlist))
+    except ldap.ALREADY_EXISTS as e:
+        return bad_request('User already exists')
+    except Exception as e:
+        return bad_request(e)
+    return "User %s created" % username
 
 # Add ldap user to group
-def ldap_add_user_to_group(username, password, project_name):
-    ldap_server="ldap://0.0.0.0:389"
+def ldap_add_user_to_group(username, project_name):
     l = ldap.initialize(ldap_server)
     l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
     dn = "cn=%s,ou=group,dc=pallur,dc=cloud" % project_name
-    modlist = {
-           "objectClass": ["inetOrgPerson", "posixAccount", "shadowAccount"],
-           "cn": ["Maarten De Paepe"],
-          }
-    l.add(dn, modlist)
+    #modlist = {
+    #       "objectClass": ["posixGroup", "top"],
+    #       "cn": [project_name],
+    #       "memberUid": [username]
+    #      }
+    modlist = [
+        (ldap.MOD_ADD, 'objectClass', ["posixGroup", "top"]),
+        (ldap.MOD_ADD, 'cn', project_name),
+        (ldap.MOD_ADD, 'memberUid', username)
+        ]
+    try:
+        return l.modify_s(dn, ldap.modlist.addModlist(modlist))
+    except Exception as e:
+        return bad_request(e)
+    
 
 # Delete user from LDAP
 def ldap_delete_user(username, password):
-    check_credentials(username, password)
-    ldap_server="ldap://0.0.0.0:389"
+    #check_credentials(username, password)
     l = ldap.initialize(ldap_server)
     l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
-    dn = "uid=maarten,ou=people,dc=example,cd=com"
-    l.delete_s(dn)
+    dn = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
+    try:
+        l.delete_s(dn)
+    except ldap.NO_SUCH_OBJECT as e:
+        return bad_request("User does not exist")
+    return 'Deleted user: %s' % username
+
 
 # ----------------------------------------------------------
 # Project methods
@@ -409,3 +455,6 @@ def create_docker_compose(project_name):
     except Exception as e:
         click.echo(e)
         return
+
+def bad_request(message):
+    return Response(jsonpickle.encode({'message': message}), status=400, mimetype='application/json')

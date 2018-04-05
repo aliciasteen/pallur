@@ -40,29 +40,34 @@ def user():
 @click.password_option()
 def create_user(username, password):
     """Create User"""
-    click.echo("True")
+    r = requests.post(api_root + username, json={'username': username, 'password': password})
+    check_status_code(r)
+    click.echo(r.text)
 
 # Delete user from ldap. User must login first.
 # Cannot be deleted if group only has one member. Must delete group first
 @user.command(name='delete')
 @click.option('--username', '-n', help='Username', prompt=True)
-@click.password_option()
+@click.password_option(confirmation_prompt=False)
 def delete_user(username, password):
     """Delete User"""
     headers = {'session_id': session_id()}
-    login(username, password)
-    return True
+    url = api_root + username + "/delete"
+    r = requests.post(url, headers=headers, json={'username': username, 'password': password})
+    check_status_code(r)
+    click.echo(r.text)
 
 # Add user to ldap group. This allows users to access projects.
 # Requires user with access to group to be logged in
-@user.command(name='group')
+@user.command(name='project')
 @click.option('--name', help='Username', prompt=True)
-def user_groups(name):
+@click.option('--project', help='Project to add user to', prompt=True)
+def user_groups(name, project):
     """Add user to project"""
     headers = {'session_id': session_id()}
-    url = api_root + name + '/groups'
-    r = requests.get(url, headers=headers)
-    check_status_code(r.status_code)
+    url = api_root + name + '/group'
+    r = requests.post(url, headers=headers, json={'project_name': project})
+    check_status_code(r)
     click.echo(r.text)
 
 # ----------------------------------------------------------
@@ -86,7 +91,7 @@ def create(name, configuration):
     with click_spinner.spinner():
         try:
             r = requests.post(url, data=data, headers=headers)
-            check_status_code(r.status_code)
+            check_status_code(r)
         except requests.exceptions.ConnectionError as e:
             click.echo("Connection error. Please wait and try again.")        
     
@@ -100,7 +105,7 @@ def status(name):
     headers = {'session_id': session_id()}
     url = api_root + 'projects/' + name
     r = requests.get(url, headers=headers)
-    check_status_code(r.status_code)
+    check_status_code(r)
     click.echo(json.dumps(r.json(), indent=4, separators=(',', ': ')))
     
 # Deploys project from configuration saved
@@ -164,14 +169,19 @@ def login(username, password):
 # Methods
 # ----------------------------------------------------------
 
-def check_status_code(status_code):
+def check_status_code(r):
+    status_code = r.status_code
+    try:
+        message = r.json()['message']
+    except:
+        message = 'No Message'
     if status_code == 401:
         click.echo(click.style("You are not logged in or session may have expired. Please login in.", fg='red'))
         quit()
     elif status_code == 200:
         pass
     else:
-        click.echo(click.style("%s An error has occured." % status_code, fg='red'))
+        click.echo(click.style("%s An error has occured: %s" % (status_code, message), fg='red'))
         quit()
 
 def session_id():
