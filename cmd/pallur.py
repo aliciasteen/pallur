@@ -15,26 +15,47 @@ from .project import Project
 app = Flask(__name__)
 pallur_home = "/root/pallur"
 
-# API routes
+ldap_admin_user = "cn=admin,dc=pallur,dc=cloud"
+ldap_admin_pass = "password"
+
+# ----------------------------------------------------------
+# Flask API routes
+# ----------------------------------------------------------
 
 @app.route('/api')
 def hello_world():
-    return 'Hello world!'
+    return 'Pallur'
+
+# ----------------------------------------------------------
+# Users
+# ----------------------------------------------------------
 
 @app.route('/api/users', methods=['POST'])
 def api_users():
     api_check_active_session()
     return 'Users'
 
-@app.route('/api/<username>')
-def api_delete_user(username):
+
+@app.route('/api/<username>/create')
+def api_add_user(username, password, project_name):
     api_check_active_session()
+    ldap_add_user(username, password, project_name)
+    return 'Added user: %s' % username
+
+@app.route('/api/<username>/delete')
+def api_delete_user(username, password):
+    api_check_active_session()
+    ldap_delete_user(username, password)
     return 'Deleted user: %s' % username
 
 @app.route('/api/<username>/groups')
 def api_user_groups(username):
     api_check_active_session()
     return check_group(request.headers['session_id'], 'not')
+
+# ----------------------------------------------------------
+# Projects
+# ----------------------------------------------------------
 
 @app.route('/api/projects', methods=['GET', 'POST'])
 def api_projects():
@@ -73,6 +94,16 @@ def api_project_down(project_name):
     api_check_active_session()
     return 'Project down: %s' % project_name
 
+
+
+@app.route('/api/sessiontest')
+def api_session_test():
+    api_check_active_session()
+    return "Active session"
+
+# ----------------------------------------------------------
+# Login
+# ----------------------------------------------------------
 @app.route('/api/login', methods=['POST'])
 def api_login():
     #click.echo("JSON Message: " + json.dumps(request.json))
@@ -81,58 +112,17 @@ def api_login():
     session_id = create_session(json['username'])
     return Response(jsonpickle.encode({'session_id': session_id}), status=200, mimetype='application/json')
 
-@app.route('/api/sessiontest')
-def api_session_test():
-    api_check_active_session()
-    return "Active session"
-
+# ----------------------------------------------------------
+# ----------------------------------------------------------
 # Methods
+# ----------------------------------------------------------
 
-def api_check_active_session():
-    session_id = request.headers['session_id']
-    if check_active_session(session_id) != 1:
-        abort(401)
+# ----------------------------------------------------------
+# User authenitcation methods
+# ----------------------------------------------------------
 
-def check_credentials(username, password):
-    ldap_server="ldap://0.0.0.0:389"
-    l = ldap.initialize(ldap_server)
-    username = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
-    try:
-      l.simple_bind_s(username, password)
-      return "Login successful"
-    except ldap.INVALID_CREDENTIALS:
-        click.echo("Incorrect Password")
-        abort(401)
-    except ldap.LDAPError as e:
-        click.echo('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
-    except Exception as e:
-        click.echo(e)
-        return "error"
-
-def check_group(session_id, project_name):
-    ldap_server="ldap://0.0.0.0:389"
-    l = ldap.initialize(ldap_server)
-    admin_user = "cn=admin,dc=pallur,dc=cloud"
-    admin_pass = "admin"
-    l.simple_bind_s(admin_user, admin_pass)
-    username = get_username_from_session(session_id)
-    click.echo(username)
-    search_filter = "(&(objectClass=posixGroup)(cn=%s)(memberUid=%s))" % (project_name, username)
-    
-    try:
-        results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['memberUid'])
-        if results:
-            return "In group"
-        else:
-            return "Not in group"
-        return str(results)
-    #except ldap.LDAPError as e:
-    #    return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
-    except Exception as e:
-        click.echo(e)
-    #    return "error"
-    return "this"
-
+# ----------------------------------------------------------
+# Sessions
 def create_session(username):
     try:
         client = docker.from_env()
@@ -145,6 +135,11 @@ def create_session(username):
         return lease_id
     except Exception as e:
         click.echo(e)
+
+def api_check_active_session():
+    session_id = request.headers['session_id']
+    if check_active_session(session_id) != 1:
+        abort(401)
 
 def check_active_session(session_id):
     try:
@@ -167,6 +162,106 @@ def get_username_from_session(session_id):
         return username
     except Exception as e:
         click.echo(e)
+
+# ----------------------------------------------------------
+# LDAP
+
+# Check login to ldap
+def check_credentials(username, password):
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    username = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
+    try:
+      l.simple_bind_s(username, password)
+      return "Login successful"
+    except ldap.INVALID_CREDENTIALS:
+        click.echo("Incorrect Password")
+        abort(401)
+    except ldap.LDAPError as e:
+        click.echo('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+    except Exception as e:
+        click.echo(e)
+        return "error"
+
+# Check user is in group
+def check_group(session_id, project_name):
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    username = get_username_from_session(session_id)
+    search_filter = "(&(objectClass=posixGroup)(cn=%s)(memberUid=%s))" % (project_name, username)
+    
+    try:
+        results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['memberUid'])
+        if results:
+            return "In group"
+        else:
+            return "Not in group"
+        return str(results)
+    #except ldap.LDAPError as e:
+    #    return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+    except Exception as e:
+        click.echo(e)
+        return "error"
+    return "this"
+
+# Add ldap group
+def ldap_add_group(project_name):
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    dn = "cn=%s,ou=groups,dc=pallur,dc=cloud" % project_name
+    modlist = {
+           "objectClass": ["inetOrgPerson", "posixAccount", "shadowAccount"],
+           "cn": ["Maarten De Paepe"],
+           "displayName": ["Maarten De Paepe"],
+           "uidNumber": ["5000"],
+           "gidNumber": ["10000"]
+          }
+    l.add(dn, modlist)
+
+# Add ldap user
+def ldap_add_user(project_name, username, password):
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    dn = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
+    modlist = {
+           "objectClass": ["inetOrgPerson", "posixAccount", "shadowAccount"],
+           "cn": ["Maarten De Paepe"],
+           "displayName": ["Maarten De Paepe"],
+           "uidNumber": ["5000"],
+           "gidNumber": ["10000"]
+          }
+    l.add(dn, modlist)
+
+# Add ldap user to group
+def ldap_add_user_to_group(username, password, project_name):
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    dn = "cn=%s,ou=group,dc=pallur,dc=cloud" % project_name
+    modlist = {
+           "objectClass": ["inetOrgPerson", "posixAccount", "shadowAccount"],
+           "cn": ["Maarten De Paepe"],
+          }
+    l.add(dn, modlist)
+
+# Delete user from LDAP
+def ldap_delete_user(username, password):
+    check_credentials(username, password)
+    ldap_server="ldap://0.0.0.0:389"
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    dn = "uid=maarten,ou=people,dc=example,cd=com"
+    l.delete_s(dn)
+
+# ----------------------------------------------------------
+# Project methods
+# ----------------------------------------------------------
+
+# ----------------------------------------------------------
+# ETCD methods
 
 def add_update_project_configuration(json):
     try:
@@ -214,6 +309,9 @@ def get_project_configuration(project_name):
     except Exception as e:
         click.echo(e)
 
+# ----------------------------------------------------------
+# Docker methods
+
 def create_project(project_name):  
     build_docker_image(project_name)
     create_docker_compose(project_name)
@@ -255,6 +353,8 @@ def build_docker_image(project_name):
         return
 
     # Build docker image
+    # Should use commit ID as tag
+
     click.echo("Building docker image")
     path="/project-data/%s" % project_name
     tag="%s:0.0.1" % project_name
@@ -264,6 +364,7 @@ def build_docker_image(project_name):
     # Delete cloned repo
     shutil.rmtree(path)
 
+# Start project
 def docker_compose_up(project_name):
     # Deploys docker-compose
     compose_file = "/project-data/%s/docker-compose.yml" % project_name
@@ -272,6 +373,7 @@ def docker_compose_up(project_name):
     except Exception as e:
         click.echo(e)
     
+# Stop project
 def docker_compose_down(project_name):
     # Deploys docker-compose
     compose_file = "/project-data/%s/docker-compose.yml" % project_name
@@ -281,6 +383,7 @@ def docker_compose_down(project_name):
         click.echo(e)
 
 
+# Create docker compose file
 def create_docker_compose(project_name):
     # Create docker-compose file
     dockercompose = open(os.path.join(pallur_home, "projectskeleton/docker-compose.yml"),"r")

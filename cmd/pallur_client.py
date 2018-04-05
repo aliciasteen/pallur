@@ -7,6 +7,10 @@ import click_spinner
 
 api_root = 'http://server.pallur.cloud:5000/api/'
 
+# ----------------------------------------------------------
+# Click groups
+# ----------------------------------------------------------
+
 @click.group()
 def pallur_client():
     "PaaS for python"
@@ -22,16 +26,54 @@ def user():
     """User login, logout, management and deletion"""
     pass
 
-@user.command()
+# ----------------------------------------------------------
+# ----------------------------------------------------------
+# Click Commands
+
+# ----------------------------------------------------------
+# Click user commands
+# ----------------------------------------------------------
+
+# Add user to ldap directory. No login needed
+@user.command(name='create')
+@click.option('--username', '-n', help='Username', prompt=True)
+@click.password_option()
+def create_user(username, password):
+    """Create User"""
+    click.echo("True")
+
+# Delete user from ldap. User must login first.
+# Cannot be deleted if group only has one member. Must delete group first
+@user.command(name='delete')
+@click.option('--username', '-n', help='Username', prompt=True)
+@click.password_option()
+def delete_user(username, password):
+    """Delete User"""
+    headers = {'session_id': session_id()}
+    login(username, password)
+    return True
+
+# Add user to ldap group. This allows users to access projects.
+# Requires user with access to group to be logged in
+@user.command(name='group')
 @click.option('--name', help='Username', prompt=True)
 def user_groups(name):
+    """Add user to project"""
     headers = {'session_id': session_id()}
     url = api_root + name + '/groups'
     r = requests.get(url, headers=headers)
     check_status_code(r.status_code)
     click.echo(r.text)
 
-#TODO Send configuration file, and project name
+# ----------------------------------------------------------
+# Click project commands
+# ----------------------------------------------------------
+
+# Creates project
+# - Adds group to LDAP
+# - Saves configuration to LDAP
+# - Deploys project
+# - Returns project URL 
 @project.command()
 @click.option('--name', '-n' , default='NewProject', help='Project name', prompt=True)
 @click.option('--configuration', type=click.File('r'), help='Path of configuration file', prompt='Configuration file path')
@@ -48,7 +90,10 @@ def create(name, configuration):
         except requests.exceptions.ConnectionError as e:
             click.echo("Connection error. Please wait and try again.")        
     
-
+# Gets status of project. Returns:
+# - Name
+# - URL
+# - If deployed
 @project.command()
 @click.option('--name', help='Project Name', prompt=True)
 def status(name):
@@ -58,50 +103,46 @@ def status(name):
     check_status_code(r.status_code)
     click.echo(json.dumps(r.json(), indent=4, separators=(',', ': ')))
     
+# Deploys project from configuration saved
 @project.command()
 @click.option('--name', default='NewProject', help='Project name') 
 def up(name):
     """Project up"""
     click.echo('project up %s' % name)
 
+# Deletes project
+# Removes all configuration, and ldap groups, remove project deployment
 @project.command()
 def delete():
     """Delete project"""
+    headers = {'session_id': session_id()}
     click.echo('Deleted project')
 
+# Stops project. Does not delete anything
 @project.command()
 def down():
     """project down"""
+    headers = {'session_id': session_id()}
     click.echo('project down')
 
+# Update project
+# Can redeploy if needed
 @project.command()
 def update():
     """project update"""
+    headers = {'session_id': session_id()}
     click.echo('project update')
 
+# List projects user has access to
 @project.command()
 def list():
     """project list"""
+    headers = {'session_id': session_id()}
     click.echo('project list')
 
-def session_id():
-    try:
-        file_location = expanduser("~")
-        session_file = open(os.path.join(file_location, ".pallursession"),"r")
-        session_id = session_file.read()
-        return session_id
-    except:
-        return
-
-def check_status_code(status_code):
-    if status_code == 401:
-        click.echo(click.style("You are not logged in or session may have expired. Please login in.", fg='red'))
-        quit()
-    elif status_code == 200:
-        pass
-    else:
-        click.echo(click.style("%s An error has occured." % status_code, fg='red'))
-        quit()
+# ----------------------------------------------------------
+# Click login
+# ----------------------------------------------------------
 
 @pallur_client.command()
 @click.option('--username', prompt=True, help='username')
@@ -118,6 +159,29 @@ def login(username, password):
         click.echo(session_id)
         session_file.write(session_id)
         session_file.close
+
+# ----------------------------------------------------------
+# Methods
+# ----------------------------------------------------------
+
+def check_status_code(status_code):
+    if status_code == 401:
+        click.echo(click.style("You are not logged in or session may have expired. Please login in.", fg='red'))
+        quit()
+    elif status_code == 200:
+        pass
+    else:
+        click.echo(click.style("%s An error has occured." % status_code, fg='red'))
+        quit()
+
+def session_id():
+    try:
+        file_location = expanduser("~")
+        session_file = open(os.path.join(file_location, ".pallursession"),"r")
+        session_id = session_file.read()
+        return session_id
+    except:
+        return
 
 if __name__ == '__main__':
     pallur_client()
