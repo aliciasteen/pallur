@@ -140,7 +140,7 @@ def create_session(username):
         container.exec_run("etcdctl put --lease=%s %s %s" % (lease_id, lease_id, username))
         return lease_id
     except Exception as e:
-        click.echo(e)
+        bad_request(e)
 
 def api_check_active_session():
     try:
@@ -157,12 +157,11 @@ def check_active_session(session_id):
         container = client.containers.get('etcd')
         exec_run_result = container.exec_run("etcdctl lease timetolive --keys %s" % session_id)
         if "remaining(-1s)" in exec_run_result[1]:
-            click.echo("Session %s does not exist or is expired" % session_id)
-            return -1
+            bad_request("Session %s does not exist or is expired" % session_id)
         else:
             return 1
     except Exception as e:
-        click.echo(e)
+        bad_request(e)
 
 def get_username_from_session(session_id):
     try:
@@ -171,7 +170,7 @@ def get_username_from_session(session_id):
         username = container.exec_run("etcdctl get %s -w=simple --print-value-only" % session_id)[1].replace("\n", "")
         return username
     except Exception as e:
-        click.echo(e)
+        bad_request(e)
 
 # ----------------------------------------------------------
 # LDAP
@@ -184,13 +183,11 @@ def check_credentials(username, password):
       l.simple_bind_s(username, password)
       return "Login successful"
     except ldap.INVALID_CREDENTIALS:
-        click.echo("Incorrect Password")
-        abort(401)
+        abort(401, {'message': "Incorrect Password"})
     except ldap.LDAPError as e:
-        click.echo('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+        bad_request('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
     except Exception as e:
-        click.echo(e)
-        return "error"
+        bad_request(e)
 
 # Check user is in group
 def check_group(session_id, project_name):
@@ -209,9 +206,7 @@ def check_group(session_id, project_name):
     except ldap.LDAPError as e:
         return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
     except Exception as e:
-        click.echo(e)
-        return "error"
-    return "this"
+        bad_request(e)
 
 # Gets maximum UID number from LDAP
 def ldap_max_uid():
@@ -224,7 +219,6 @@ def ldap_max_uid():
     except ldap.LDAPError as e:
         return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
     except Exception as e:
-        click.echo(e)
         return 1000
 
 # Add ldap group
@@ -265,7 +259,7 @@ def ldap_add_user(username, password):
     except ldap.ALREADY_EXISTS as e:
         return bad_request('User already exists')
     except Exception as e:
-        return bad_request(e)
+        bad_request(e)
     return "User %s created" % username
 
 # Add ldap user to group
@@ -286,7 +280,7 @@ def ldap_add_user_to_group(username, project_name):
     try:
         return l.modify_s(dn, ldap.modlist.addModlist(modlist))
     except Exception as e:
-        return bad_request(e)
+        bad_request(e)
     
 
 # Delete user from LDAP
@@ -298,7 +292,7 @@ def ldap_delete_user(username, password):
     try:
         l.delete_s(dn)
     except ldap.NO_SUCH_OBJECT as e:
-        return bad_request("User does not exist")
+        bad_request("User does not exist")
     return 'Deleted user: %s' % username
 
 
@@ -321,7 +315,7 @@ def add_update_project_configuration(json):
                 container.exec_run("etcdctl put /%s/%s/%s %s" % (project_name, section, key, value))
         container.exec_run("etcdctl put /%s/active false" % project_name)
     except Exception as e:
-        click.echo(e)
+        bad_request(e)
 
 def etcd_set(project_name, key, value):
     client = docker.from_env()
@@ -329,7 +323,7 @@ def etcd_set(project_name, key, value):
     try:
         container.exec_run("etcdctl put /%s/%s %s" % (project_name, key, value))[1].replace("\n", "")
     except Exception as e:
-        click.echo(e)
+        bad_request(e)
 
 def etcd_get(project_name, key):
     try:
@@ -338,7 +332,7 @@ def etcd_get(project_name, key):
         etcd_result = container.exec_run("etcdctl get /%s/%s -w=simple --print-value-only" % (project_name, key))
         return etcd_result[1].replace("\n", "")
     except Exception as e:
-        click.echo(e)
+        bad_request(e)
 
 def get_project_configuration(project_name):
     try:
@@ -353,7 +347,7 @@ def get_project_configuration(project_name):
         data["Deployed"] = container.exec_run("etcdctl get /%s/active -w=simple --print-value-only" % project_name)[1].replace("\n", "")
         return json.dumps(data)
     except Exception as e:
-        click.echo(e)
+        bad_request(e)
 
 # ----------------------------------------------------------
 # Docker methods
@@ -390,7 +384,7 @@ def build_docker_image(project_name):
     port = etcd_get(project_name, "configuration/port")
     main_file = etcd_get(project_name, "configuration/file")
     network = etcd_get(project_name, "network")
-    d = {'python_version':python_version, 'port':port, 'main_file':main_file, 'project_name':project_name}
+    d = {'python_version':python_version, 'port':port, 'main_file':main_file, 'project_name':project_name, 'network': network}
     substitute_dockerfile = src.substitute(d)
 
     # Save temp dockerfile
@@ -399,8 +393,7 @@ def build_docker_image(project_name):
         temp_dockerfile.write(substitute_dockerfile)
         temp_dockerfile.close()
     except Exception as e:
-        click.echo(e)
-        return
+        bad_request(e)
 
     # Build docker image
     # Should use commit ID as tag
@@ -426,7 +419,7 @@ def docker_compose_up(project_name):
     try:
         click.echo(call(['docker-compose', '-f', compose_file, 'up', '-d']))
     except Exception as e:
-        click.echo(e)
+        bad_request(e)
     
 # Stop project
 def docker_compose_down(project_name):
@@ -435,7 +428,7 @@ def docker_compose_down(project_name):
     try:
         click.echo(call(['docker-compose', '-f', compose_file, 'down']))
     except Exception as e:
-        click.echo(e)
+        bad_request(e)
 
 
 # Create docker compose file
@@ -453,13 +446,12 @@ def create_docker_compose(project_name):
         temp_dockercompose = open("/project-data/%s/docker-compose.yml" % project_name, 'w')
         temp_dockercompose.write(result)
         temp_dockercompose.close()
-        return
     except Exception as e:
-        click.echo(e)
-        return
+        bad_request(e)
 
 def bad_request(message):
-    return Response(jsonpickle.encode({'message': message}), status=400, mimetype='application/json')
+    abort(400, {'message': message})
+    #return Response(jsonpickle.encode({'message': message}), status=400, mimetype='application/json')
 
 
 # ----------------------------------------------------------
@@ -484,10 +476,9 @@ def docker_db_deploy(project_name):
     elif (database_type == 'mongodb'):
         environment = []
     elif (database_type == 'postgres'):
-        environment = ['POSTGRES_PASSWORD=%s' % mysecretpassword]
+        environment = ['POSTGRES_PASSWORD=%s' % database_password]
     else:
         bad_request("Database type not supported")
-        return
     container = client.containers.run(
         database_tag, 
         name=container_name, 
@@ -507,5 +498,5 @@ def docker_db_remove(project_name):
         container.stop()
         container.remove()
     except docker.errors.APIError as e:
-        bad_request("Docker error")
+        bad_request("Docker error: %s" % e)
     etcd_set(project_name, "database/active", 'False')
