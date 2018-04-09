@@ -272,23 +272,30 @@ def ldap_add_user(username, password):
 
 # Add ldap user to group
 def ldap_add_user_to_group(username, project_name):
+    click.echo("Function")
     l = ldap.initialize(ldap_server)
+    click.echo("intalize")
     l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
-    dn = "cn=%s,ou=group,dc=pallur,dc=cloud" % project_name
-    #modlist = {
-    #       "objectClass": ["posixGroup", "top"],
-    #       "cn": [project_name],
-    #       "memberUid": [username]
-    #      }
-    modlist = [
-        (ldap.MOD_ADD, 'objectClass', ["posixGroup", "top"]),
-        (ldap.MOD_ADD, 'cn', project_name),
-        (ldap.MOD_ADD, 'memberUid', username)
-        ]
+    click.echo("Bind")
+    dn = "cn=%s,ou=groups,dc=pallur,dc=cloud" % project_name
+
+    # Get orignal members of group
+    search_filter = "(&(objectClass=posixGroup)(cn=%s))" % project_name
+    results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['memberUid'])
+
+    group_members = results[0][1]['memberUid']
+    click.echo("group members: %s" % group_members)
+    group_members.append(str (username))
+    click.echo("new_group_members: %s" % group_members)
+
+    modlist = [(ldap.MOD_REPLACE, 'memberuid', group_members)]
+    click.echo(modlist)
     try:
-        return l.modify_s(dn, ldap.modlist.addModlist(modlist))
+        click.echo(l.modify_s(dn, modlist))
     except Exception as e:
+        click.echo(e)
         bad_request(e)
+    return "User added to project"
     
 
 # Delete user from LDAP
@@ -299,7 +306,7 @@ def ldap_delete_user(username, password):
     dn = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
     try:
         l.delete_s(dn)
-    except ldap.NO_SUCH_OBJECT as e:
+    except ldap.NO_SUCH_OBJECT:
         bad_request("User does not exist")
     return 'Deleted user: %s' % username
 
