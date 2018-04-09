@@ -44,7 +44,7 @@ def create_user(username, password):
         r = requests.post(api_root + "users", json={'username': username, 'password': password})
         check_status_code(r)
         click.echo(r.text)
-    except requests.exceptions.ConnectionError as e:
+    except requests.exceptions.ConnectionError:
         click.echo("Connection error. Please wait and try again.")    
     
 
@@ -61,7 +61,7 @@ def delete_user(username, password):
         r = requests.post(url, headers=headers, json={'username': username, 'password': password})
         check_status_code(r)
         click.echo(r.text)
-    except requests.exceptions.ConnectionError as e:
+    except requests.exceptions.ConnectionError:
         click.echo("Connection error. Please wait and try again.")    
 
 # Add user to ldap group. This allows users to access projects.
@@ -77,7 +77,7 @@ def user_groups(name, project):
         r = requests.post(url, headers=headers, json={'project_name': project})
         check_status_code(r)
         click.echo(r.text)
-    except requests.exceptions.ConnectionError as e:
+    except requests.exceptions.ConnectionError:
         click.echo("Connection error. Please wait and try again.")
 
 # ----------------------------------------------------------
@@ -90,7 +90,7 @@ def user_groups(name, project):
 # - Deploys project
 # - Returns project URL 
 @project.command()
-@click.option('--name', '-n' , default='NewProject', help='Project name', prompt=True)
+@click.option('--name', '-n', help='Project name', prompt=True) 
 @click.option('--configuration', type=click.File('r'), help='Path of configuration file', prompt='Configuration file path')
 def create(name, configuration):
     """Create new project"""
@@ -102,7 +102,7 @@ def create(name, configuration):
         try:
             r = requests.post(url, data=data, headers=headers)
             check_status_code(r)
-        except requests.exceptions.ConnectionError as e:
+        except requests.exceptions.ConnectionError:
             click.echo("Connection error. Please wait and try again.")        
     
 # Gets status of project. Returns:
@@ -110,39 +110,63 @@ def create(name, configuration):
 # - URL
 # - If deployed
 @project.command()
-@click.option('--name', help='Project Name', prompt=True)
+@click.option('--name', '-n', help='Project name', prompt=True) 
 def status(name):
+    """Create Project"""
     headers = {'session_id': session_id()}
     url = api_root + 'projects/' + name
     try:
         r = requests.get(url, headers=headers)
         check_status_code(r)
         click.echo(json.dumps(r.json(), indent=4, separators=(',', ': ')))
-    except requests.exceptions.ConnectionError as e:
+    except requests.exceptions.ConnectionError:
         click.echo("Connection error. Please wait and try again.")    
 
     
 # Deploys project from configuration saved
 @project.command()
-@click.option('--name', default='NewProject', help='Project name') 
+@click.option('--name', '-n', help='Project name', prompt=True) 
 def up(name):
-    """Project up"""
-    click.echo('project up %s' % name)
+    """Deploy Project"""
+    headers = {'session_id': session_id()}
+    url = api_root + 'projects/%s/up' % name 
+    try:
+        r = requests.get(url, headers=headers)
+        check_status_code(r)
+        click.echo(json.dumps(r.json(), indent=4, separators=(',', ': ')))
+    except requests.exceptions.ConnectionError:
+        click.echo("Connection error. Please wait and try again.")    
+    click.echo('Project %s deployed' % name)
 
 # Deletes project
 # Removes all configuration, and ldap groups, remove project deployment
 @project.command()
-def delete():
+@click.option('--name', '-n', help='Project name', prompt=True) 
+def delete(name):
     """Delete project"""
     headers = {'session_id': session_id()}
-    click.echo('Deleted project')
+    url = api_root + 'projects/%s/delete' % name 
+    try:
+        r = requests.get(url, headers=headers)
+        check_status_code(r)
+        click.echo('Deleted %s project' % name)
+    except requests.exceptions.ConnectionError:
+        click.echo("Connection error. Please wait and try again.")   
+    
 
 # Stops project. Does not delete anything
+@click.option('--name', '-n' , default='NewProject', help='Project name', prompt=True)
 @project.command()
-def down():
+def down(name):
     """project down"""
     headers = {'session_id': session_id()}
-    click.echo('project down')
+    url = api_root + 'projects/%s/down' % name 
+    try:
+        r = requests.get(url, headers=headers)
+        check_status_code(r)
+        click.echo('Project %s stopped' % name)
+    except requests.exceptions.ConnectionError:
+        click.echo("Connection error. Please wait and try again.")   
 
 # Update project
 # Can redeploy if needed
@@ -159,7 +183,7 @@ def update(name, configuration):
         try:
             r = requests.post(url, data=data, headers=headers)
             check_status_code(r)
-        except requests.exceptions.ConnectionError as e:
+        except requests.exceptions.ConnectionError:
             click.echo("Connection error. Please wait and try again.")        
 
 # List projects user has access to
@@ -167,7 +191,13 @@ def update(name, configuration):
 def list():
     """project list"""
     headers = {'session_id': session_id()}
-    click.echo('project list')
+    url = api_root + 'projects'
+    try:
+        r = requests.get(url, headers=headers)
+        check_status_code(r)
+        click.echo(r.text())
+    except requests.exceptions.ConnectionError:
+        click.echo("Connection error. Please wait and try again.")
 
 # ----------------------------------------------------------
 # Click login
