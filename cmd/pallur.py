@@ -361,6 +361,9 @@ def get_project_configuration(project_name):
 def create_project(project_name):  
     build_docker_image(project_name)
     create_docker_compose(project_name)
+    docker_network_create(project_name)
+    if etcd_get(project_name, "database/name"):
+        docker_db_deploy(project_name)
     docker_compose_up(project_name)  
 
 def build_docker_image(project_name):
@@ -386,6 +389,7 @@ def build_docker_image(project_name):
     python_version = etcd_get(project_name, "project/python_version")
     port = etcd_get(project_name, "configuration/port")
     main_file = etcd_get(project_name, "configuration/file")
+    network = etcd_get(project_name, "network")
     d = {'python_version':python_version, 'port':port, 'main_file':main_file, 'project_name':project_name}
     substitute_dockerfile = src.substitute(d)
 
@@ -409,6 +413,11 @@ def build_docker_image(project_name):
 
     # Delete cloned repo
     shutil.rmtree(path)
+
+def docker_network_create(project_name):
+    client = docker.from_env()
+    network = client.networks.create(project_name)
+    etcd_set(project_name, "network", network.id)
 
 # Start project
 def docker_compose_up(project_name):
@@ -451,3 +460,52 @@ def create_docker_compose(project_name):
 
 def bad_request(message):
     return Response(jsonpickle.encode({'message': message}), status=400, mimetype='application/json')
+
+
+# ----------------------------------------------------------
+# Docker database
+# MySQL
+# mongo
+# postgres
+
+def docker_db_deploy(project_name):
+    database_type = etcd_get(project_name, "database/type")
+    database_version = etcd_get(project_name, "database/version")
+    database_password = etcd_get(project_name, "database/password")
+    docker_network = etcd_get(project_name, "network")
+
+    database_tag = "%s:%s" % (database_type, database_version)
+    container_name = "%s-db" % project_name
+
+    client = docker.from_env()
+
+    if (database_type == 'mysql'):
+        environment = ['MYSQL_ROOT_PASSWORD=%s' % database_password]
+    elif (database_type == 'mongodb'):
+        environment = []
+    elif (database_type == 'postgres'):
+        environment = ['POSTGRES_PASSWORD=%s' % mysecretpassword]
+    else:
+        bad_request("Database type not supported")
+        return
+    container = client.containers.run(
+        database_tag, 
+        name=container_name, 
+        network=docker_network,
+        environment=environment,  
+        detach=True
+    )
+
+    etcd_set(project_name, "database/id", container.id)
+    etcd_set(project_name, "database/active", 'True')
+
+def docker_db_remove(project_name):
+    client = docker.from_env()
+    database_id = etcd_get(project_name, "database/id")
+    container = client.containers.get(database_id)
+    try:
+        container.stop()
+        container.remove()
+    except docker.errors.APIError as e:
+        bad_request("Docker error")
+    etcd_set(project_name, "database/active", 'False')
