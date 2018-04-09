@@ -70,42 +70,50 @@ def api_projects():
         return 'Projects'
     if request.method == 'POST':
         json = request.get_json(force=True)
-        add_update_project_configuration(json)
         project_name = json['project']['name']
+        check_group(request.headers['session_id'], project_name)
+        add_update_project_configuration(json)
         create_project(project_name)
         return 'Project created'
 
 @app.route('/api/projects/<project_name>')
 def api_project(project_name):
     api_check_active_session()
+    check_group(request.headers['session_id'], project_name)
     return get_project_configuration(project_name)
 
-@app.route('/api/projects/<project_name>/config')
-def api_project_config(project_name):
-    api_check_active_session()
-    return 'Project config: %s' % project_name
-
-@app.route('/api/projects/<project_name>/code')
+@app.route('/api/projects/<project_name>/update')
 def api_project_code(project_name):
     api_check_active_session()
+    check_group(request.headers['session_id'], project_name)
+    json = request.get_json(force=True)
+    add_update_project_configuration(json)
+    update_project(project_name)
     return 'Project code: %s' % project_name
 
 @app.route('/api/projects/<project_name>/up')
 def api_project_up(project_name):
     api_check_active_session()
+    check_group(request.headers['session_id'], project_name)
+    deploy_project(project_name)
     return 'Project up: %s' % project_name
 
 @app.route('/api/projects/<project_name>/down')
 def api_project_down(project_name):
     api_check_active_session()
+    check_group(request.headers['session_id'], project_name)
+    project_down(project_name)
     return 'Project down: %s' % project_name
 
-
-
-@app.route('/api/sessiontest')
-def api_session_test():
+@app.route('/api/projects/<project_name>/delete')
+def api_project_delete(project_name):
     api_check_active_session()
-    return "Active session"
+    return 'Project deleted: %s' % project_name
+
+def api_project_logs(project_name):
+    api_check_active_session()
+    check_group(request.headers['session_id'], project_name)
+    return project_logs(project_name)
 
 # ----------------------------------------------------------
 # Login
@@ -255,7 +263,7 @@ def ldap_add_user(username, password):
         "homeDirectory": ["/home/%s" % username]
         }
     try:
-        result = l.add_s(dn, ldap.modlist.addModlist(modlist))
+        l.add_s(dn, ldap.modlist.addModlist(modlist))
     except ldap.ALREADY_EXISTS as e:
         return bad_request('User already exists')
     except Exception as e:
@@ -360,6 +368,22 @@ def create_project(project_name):
         docker_db_deploy(project_name)
     docker_compose_up(project_name)  
 
+def deploy_project(project_name):
+    create_docker_compose(project_name)
+    docker_compose_up(project_name)
+
+def update_project(project_name):
+    create_docker_compose(project_name)
+    docker_compose_up(project_name)
+
+def project_down(project_name):
+    create_docker_compose(project_name)
+    docker_compose_down(project_name)
+
+def project_logs(project_name):
+    container_id = etcd_get(project_name, "containerid")
+    return docker_logs(container_id)
+
 def build_docker_image(project_name):
     # Clone repository   
     path = '/project-data/%s/resources' % project_name
@@ -449,10 +473,10 @@ def create_docker_compose(project_name):
     except Exception as e:
         bad_request(e)
 
-def bad_request(message):
-    abort(400, {'message': message})
-    #return Response(jsonpickle.encode({'message': message}), status=400, mimetype='application/json')
-
+def docker_logs(container_id):
+    client = docker.from_env
+    container = client.get(container_id)
+    return container.logs(tail=250, timestamps=True)
 
 # ----------------------------------------------------------
 # Docker database
@@ -500,3 +524,11 @@ def docker_db_remove(project_name):
     except docker.errors.APIError as e:
         bad_request("Docker error: %s" % e)
     etcd_set(project_name, "database/active", 'False')
+
+# ----------------------------------------------------------
+# Error Handling
+# ----------------------------------------------------------
+
+def bad_request(message):
+    abort(400, {'message': message})
+    #return Response(jsonpickle.encode({'message': message}), status=400, mimetype='application/json')
