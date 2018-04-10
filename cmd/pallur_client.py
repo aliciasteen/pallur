@@ -133,7 +133,7 @@ def up(name):
     try:
         r = requests.get(url, headers=headers)
         check_status_code(r)
-        click.echo(json.dumps(r.json(), indent=4, separators=(',', ': ')))
+        click.echo(r.text)
     except requests.exceptions.ConnectionError:
         click.echo("Connection error. Please wait and try again.")    
     click.echo('Project %s deployed' % name)
@@ -146,16 +146,17 @@ def delete(name):
     """Delete project"""
     headers = {'session_id': session_id()}
     url = api_root + 'projects/%s/delete' % name 
-    try:
-        r = requests.get(url, headers=headers)
-        check_status_code(r)
-        click.echo('Deleted %s project' % name)
-    except requests.exceptions.ConnectionError:
-        click.echo("Connection error. Please wait and try again.")   
+    with click_spinner.spinner():
+        try:
+            r = requests.get(url, headers=headers)
+            check_status_code(r)
+            click.echo('Deleted %s project' % name)
+        except requests.exceptions.ConnectionError:
+            click.echo("Connection error. Please wait and try again.")   
     
 
 # Stops project. Does not delete anything
-@click.option('--name', '-n' , default='NewProject', help='Project name', prompt=True)
+@click.option('--name', '-n', help='Project name', prompt=True)
 @project.command()
 def down(name):
     """project down"""
@@ -215,9 +216,18 @@ def login(username, password):
         session_id = (r.json()['session_id'])
         file_location = expanduser("~")
         session_file = open(os.path.join(file_location, ".pallursession"),"w")
-        click.echo(session_id)
         session_file.write(session_id)
         session_file.close
+        click.echo("Logged in!")
+
+
+# ----------------------------------------------------------
+# Error test
+
+@pallur_client.command()
+def errortest():
+    r = requests.get(api_root + 'errortest')
+    check_status_code(r)
 
 # ----------------------------------------------------------
 # Methods
@@ -225,18 +235,20 @@ def login(username, password):
 
 def check_status_code(r):
     status_code = r.status_code
-    try:
-        message = r.json()['message']
-    except:
-        message = 'No Message'
-    if status_code == 401:
-        click.echo(click.style("You are not logged in or session may have expired. Please login in.", fg='red'))
-        quit()
-    elif status_code == 200:
+    if status_code == 200:
         pass
     else:
-        click.echo(click.style("%s An error has occured: %s" % (status_code, message), fg='red'))
-        quit()
+        try:
+            message = r.json()['message']
+        except:
+            message = 'No Message'
+            click.echo(click.style("%s An error has occured: %s" % (status_code, message), fg='red'))
+        if status_code == 401:
+            click.echo(click.style("You are not logged in or session may have expired. Please login in.", fg='red'))
+            quit()
+        else:
+            click.echo(click.style("Error %s: %s" % (status_code, message), fg='red'))
+            quit()
 
 def session_id():
     try:
@@ -245,7 +257,8 @@ def session_id():
         session_id = session_file.read()
         return session_id
     except:
-        return
+        click.echo("You are not logged in or session may have expired. Please login in.")
+        quit()
 
 if __name__ == '__main__':
     pallur_client()

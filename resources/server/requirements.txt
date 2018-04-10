@@ -1,0 +1,7 @@
+click==6.7
+docker==3.1.1
+Flask==0.12.2
+GitPython==2.1.8
+jsonpickle==0.9.6
+requests==2.18.4
+python-ldap==3.0.0

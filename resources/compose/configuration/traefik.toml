@@ -18,8 +18,9 @@ storage = "acme.json"
 entryPoint = "https"
   [acme.httpChallenge]
   entryPoint = "http"
-OnHostRule = true
+onHostRule = true
 onDemand = true
+
 
 [[acme.domains]]
   main = "server.pallur.cloud"

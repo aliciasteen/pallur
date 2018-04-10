@@ -5,13 +5,13 @@ from flask import Flask, request, Response, abort
 import jsonpickle
 import json
 import docker
+import docker.errors
 import git
 import os
 import shutil
 from subprocess import call
 import subprocess
 from string import Template
-from .project import Project
 
 app = Flask(__name__)
 pallur_home = "/root/pallur"
@@ -32,17 +32,12 @@ def hello_world():
 # Users
 # ----------------------------------------------------------
 
+# Add user to LDAP
 @app.route('/api/users', methods=['POST'])
 def api_users():
-    api_check_active_session()
-    return 'Users'
-
-# Add user to LDAP
-@app.route('/api/<username>', methods=['POST'])
-def api_add_user(username):
     json = request.get_json(force=True)
     return ldap_add_user(json['username'], json['password'])
-    
+
 @app.route('/api/<username>/delete', methods=['POST'])
 def api_delete_user(username):
     json = request.get_json(force=True)
@@ -71,10 +66,14 @@ def api_projects():
     if request.method == 'POST':
         json = request.get_json(force=True)
         project_name = json['project']['name']
-        check_group(request.headers['session_id'], project_name)
-        add_update_project_configuration(json)
-        create_project(project_name)
-        return 'Project created'
+        if not project_exists(project_name):
+            ldap_add_group(project_name)
+            ldap_add_user_to_group(get_username_from_session(request.headers['session_id']), project_name)
+            add_update_project_configuration(json)
+            create_project(project_name)
+            return 'Project created'
+        else:
+            bad_request("Project %s already exists. Please update project or choose another name" % project_name)
 
 @app.route('/api/projects/<project_name>')
 def api_project(project_name):
@@ -108,12 +107,22 @@ def api_project_down(project_name):
 @app.route('/api/projects/<project_name>/delete')
 def api_project_delete(project_name):
     api_check_active_session()
-    return 'Project deleted: %s' % project_name
+    if project_exists(project_name):
+        project_delete(project_name)
+        return 'Project deleted: %s' % project_name
+    else:
+        bad_request("Project does not exist")
 
+@app.route('/api/project/<project_name>/logs')
 def api_project_logs(project_name):
     api_check_active_session()
     check_group(request.headers['session_id'], project_name)
     return project_logs(project_name)
+
+@app.route('/api/errortest',  methods=['GET'])
+def error_time():
+    bad_request("TEST")
+    return "Does not error"
 
 # ----------------------------------------------------------
 # Login
@@ -154,9 +163,9 @@ def api_check_active_session():
     try:
         session_id = request.headers['session_id']
         if check_active_session(session_id) != 1:
-            abort(401)
+            return Response(status=401)
     except Exception as e:
-        bad_request(e)
+        return Response(status=401)
     
 
 def check_active_session(session_id):
@@ -165,11 +174,11 @@ def check_active_session(session_id):
         container = client.containers.get('etcd')
         exec_run_result = container.exec_run("etcdctl lease timetolive --keys %s" % session_id)
         if "remaining(-1s)" in exec_run_result[1]:
-            bad_request("Session %s does not exist or is expired" % session_id)
+            return Response(status=401)
         else:
             return 1
     except Exception as e:
-        bad_request(e)
+        return Response(status=401)
 
 def get_username_from_session(session_id):
     try:
@@ -216,6 +225,18 @@ def check_group(session_id, project_name):
     except Exception as e:
         bad_request(e)
 
+# Get all groups user is member of
+def check_user_groups(session_id):
+    l = ldap.initialize(ldap_server)
+    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+    username = get_username_from_session(session_id)
+    search_filter = "(&(objectClass=posixGroup)(memberUid=%s))" % username
+    results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['cn'])
+    groups = []
+    for group in results:
+        groups.append(group[1]['cn'][0])
+    return groups
+
 # Gets maximum UID number from LDAP
 def ldap_max_uid():
     l = ldap.initialize(ldap_server)
@@ -229,86 +250,133 @@ def ldap_max_uid():
     except Exception as e:
         return 1000
 
-# Add ldap group
-def ldap_add_group(project_name):
+# Gets maximum UID number from LDAP
+def ldap_max_gid():
     l = ldap.initialize(ldap_server)
     l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
-    dn = "cn=%s,ou=groups,dc=pallur,dc=cloud" % project_name
-    modlist = {
-           "objectClass": ["inetOrgPerson", "posixAccount", "shadowAccount"],
-           "cn": ["Maarten De Paepe"],
-           "displayName": ["Maarten De Paepe"],
-           "uidNumber": ["5000"],
-           "gidNumber": ["10000"]
-          }
-    l.add(dn, modlist)
+    search_filter = "(&(objectClass=posixGroup))"
+    try:
+        results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['gidnumber'])
+        return max(x[1]['gidnumber'][0] for x in results)
+    except ldap.LDAPError as e:
+        return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+    except Exception as e:
+        return 501
+
+# Add ldap group
+def ldap_add_group(project_name):
+    try:
+        l = ldap.initialize(ldap_server)
+        l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+        dn = "cn=%s,ou=groups,dc=pallur,dc=cloud" % project_name
+        project_name = str (project_name)
+        gid = str ((int (ldap_max_gid())) + 1)
+        modlist = {
+            "objectClass": ["posixGroup", "top"],
+            "cn": [project_name],
+            "gidNumber": [gid]
+            }
+        l.add_s(dn, ldap.modlist.addModlist(modlist))
+        click.echo("Added Group")
+    except ldap.ALREADY_EXISTS:
+        pass
+    except Exception as e:
+        bad_request(e.message)
 
 # Add ldap user
 def ldap_add_user(username, password):
-    l = ldap.initialize(ldap_server)
-    click.echo("GETS HERE")
-    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
-    dn = 'cn=%s,ou=users,dc=pallur,dc=cloud' % username
-    username = str (username)
-    password = str (password)
-    uid = str ((int (ldap_max_uid())) + 1)
-    modlist = {
-        "objectClass": ["inetOrgPerson", "posixAccount", "top"],
-        "sn": [username],
-        "cn": [username],
-        "uid": [username],
-        "uidNumber": [uid],
-        "userpassword": [password],
-        "gidNumber": ["500"],
-        "homeDirectory": ["/home/%s" % username]
-        }
     try:
+        click.echo("add user")
+        l = ldap.initialize(ldap_server)
+        click.echo("GETS HERE")
+        l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+        dn = 'cn=%s,ou=users,dc=pallur,dc=cloud' % username
+        username = str (username)
+        password = str (password)
+        uid = str ((int (ldap_max_uid())) + 1)
+        modlist = {
+            "objectClass": ["posixGroup", "posixAccount", "top"],
+            "sn": [username],
+            "cn": [username],
+            "uid": [username],
+            "uidNumber": [uid],
+            "userpassword": [password],
+            "gidNumber": ["500"],
+            "homeDirectory": ["/home/%s" % username]
+            }
         l.add_s(dn, ldap.modlist.addModlist(modlist))
     except ldap.ALREADY_EXISTS as e:
         return bad_request('User already exists')
+    except ldap.SERVER_DOWN:
+        return bad_request("Can't connect to LDAP")
     except Exception as e:
-        bad_request(e)
+        bad_request(e.message)
     return "User %s created" % username
 
 # Add ldap user to group
 def ldap_add_user_to_group(username, project_name):
-    click.echo("Function")
-    l = ldap.initialize(ldap_server)
-    click.echo("intalize")
-    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
-    click.echo("Bind")
-    dn = "cn=%s,ou=groups,dc=pallur,dc=cloud" % project_name
-
-    # Get orignal members of group
-    search_filter = "(&(objectClass=posixGroup)(cn=%s))" % project_name
-    results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['memberUid'])
-
-    group_members = results[0][1]['memberUid']
-    click.echo("group members: %s" % group_members)
-    group_members.append(str (username))
-    click.echo("new_group_members: %s" % group_members)
-
-    modlist = [(ldap.MOD_REPLACE, 'memberuid', group_members)]
-    click.echo(modlist)
     try:
-        click.echo(l.modify_s(dn, modlist))
+        click.echo(username)
+        l = ldap.initialize(ldap_server)
+        l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+        dn = "cn=%s,ou=groups,dc=pallur,dc=cloud" % project_name
+
+        # Get orignal members of group
+        search_filter = "(&(objectClass=posixGroup)(cn=%s))" % project_name
+        results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['memberUid'])
+        click.echo(results)
+        username = str (username)
+        try:
+            group_members = results[0][1]['memberUid']
+            if username not in group_members:
+                group_members.append(username)
+        except:
+            group_members = username
+
+        modlist = [(ldap.MOD_REPLACE, 'memberuid', group_members)]
+        click.echo("MODLIST: %s" % modlist)
+        l.modify_s(dn, modlist)
+    except ldap.SERVER_DOWN:
+        return bad_request("Can't connect to LDAP")
     except Exception as e:
-        click.echo(e)
-        bad_request(e)
+        bad_request(e.message)
     return "User added to project"
     
 
 # Delete user from LDAP
 def ldap_delete_user(username, password):
-    #check_credentials(username, password)
-    l = ldap.initialize(ldap_server)
-    l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
-    dn = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
     try:
+        #check_credentials(username, password)
+        l = ldap.initialize(ldap_server)
+        l.simple_bind_s(username, password)
+        dn = "cn=%s,ou=users,dc=pallur,dc=cloud" % username
         l.delete_s(dn)
     except ldap.NO_SUCH_OBJECT:
         bad_request("User does not exist")
+    except ldap.INVALID_DN_SYNTAX:
+        bad_request("Permission Denied")
+    except ldap.SERVER_DOWN:
+        return bad_request("Can't connect to LDAP")
+    except Exception as e:
+        bad_request(e.message)
     return 'Deleted user: %s' % username
+
+# Delete user from LDAP
+def ldap_delete_group(project_name):
+    try:
+        l = ldap.initialize(ldap_server)
+        l.simple_bind_s(ldap_admin_user, ldap_admin_pass)
+        dn = "cn=%s,ou=groups,dc=pallur,dc=cloud" % project_name
+        l.delete_s(dn)
+    except ldap.NO_SUCH_OBJECT:
+        pass
+    except ldap.INVALID_DN_SYNTAX:
+        bad_request("Permission Denied")
+    except ldap.SERVER_DOWN:
+        return bad_request("Can't connect to LDAP")
+    except Exception as e:
+        bad_request(e.message)
+    return 'Deleted group: %s' % project_name
 
 
 # ----------------------------------------------------------
@@ -349,6 +417,14 @@ def etcd_get(project_name, key):
     except Exception as e:
         bad_request(e)
 
+def etcd_remove(project_name):
+    try:
+        client = docker.from_env()
+        container = client.containers.get('etcd')
+        container.exec_run("etcdctl del --prefix /%s" % project_name)
+    except Exception as e:
+        bad_request(e)
+
 def get_project_configuration(project_name):
     try:
         data = {}
@@ -365,31 +441,56 @@ def get_project_configuration(project_name):
         bad_request(e)
 
 # ----------------------------------------------------------
-# Docker methods
+# Project methods
 
 def create_project(project_name):  
-    build_docker_image(project_name)
-    create_docker_compose(project_name)
-    docker_network_create(project_name)
-    if etcd_get(project_name, "database/name"):
-        docker_db_deploy(project_name)
-    docker_compose_up(project_name)  
+    if not project_exists(project_name):
+        build_docker_image(project_name)
+        docker_network_create(project_name)
+        if etcd_get(project_name, "database/name"):
+            docker_db_deploy(project_name)
+        docker_compose_up(project_name)
+    else:
+        click.echo("Bad request")
+        bad_request("Project %s already exists. Please update project or choose another name" % project_name)
 
 def deploy_project(project_name):
     create_docker_compose(project_name)
     docker_compose_up(project_name)
 
 def update_project(project_name):
+    old_image = etcd_get(project_name, "image_tag")
+    build_docker_image(project_name)
     create_docker_compose(project_name)
     docker_compose_up(project_name)
+    docker_rmi(old_image)
 
 def project_down(project_name):
     create_docker_compose(project_name)
     docker_compose_down(project_name)
 
+def project_delete(project_name):
+    docker_compose_delete(project_name)
+    docker_rmi(etcd_get(project_name, "image_tag"))
+    etcd_remove(project_name)
+    ldap_delete_group(project_name)
+
 def project_logs(project_name):
     container_id = etcd_get(project_name, "containerid")
     return docker_logs(container_id)
+
+def project_exists(project_name):
+    name = etcd_get(project_name, "project/name")
+    click.echo(name)
+    if name == "":
+        click.echo("PROJECT DOES NOT EXIST")
+        return False
+    else:
+        click.echo("PROJECT DOES EXIST")
+        return True
+
+# ----------------------------------------------------------
+# Docker methods
 
 def build_docker_image(project_name):
     # Clone repository   
@@ -433,37 +534,63 @@ def build_docker_image(project_name):
     path="/project-data/%s" % project_name
     tag="%s:0.0.1" % project_name
     docker_image = client.images.build(path=path, tag=tag, rm='true')[0]
-    etcd_set(project_name, "image_tag", docker_image.tags.split(':')[1])
+    etcd_set(project_name, "image_tag", docker_image.id)
 
     # Delete cloned repo
-    shutil.rmtree(path)
+    # shutil.rmtree(path)
 
+# Create a docker network if one does not exist
 def docker_network_create(project_name):
     client = docker.from_env()
-    network = client.networks.create(project_name)
-    etcd_set(project_name, "network", network.id)
+    try:
+        client.networks.get(project_name)
+    except Exception:
+        network = client.networks.create(project_name)
+        etcd_set(project_name, "network", network.id)
 
 # Start project
 def docker_compose_up(project_name):
     # Deploys docker-compose
+    create_docker_compose(project_name)
     compose_file = "/project-data/%s/docker-compose.yml" % project_name
     try:
         click.echo(call(['docker-compose', '-f', compose_file, 'up', '-d']))
+        etcd_set(project_name, "active", "true")
     except Exception as e:
         bad_request(e)
     
 # Stop project
 def docker_compose_down(project_name):
     # Deploys docker-compose
+    create_docker_compose(project_name)
     compose_file = "/project-data/%s/docker-compose.yml" % project_name
     try:
         click.echo(call(['docker-compose', '-f', compose_file, 'down']))
     except Exception as e:
         bad_request(e)
 
+# Stop project
+def docker_compose_delete(project_name):
+    # Deploys docker-compose
+    create_docker_compose(project_name)
+    compose_file = "/project-data/%s/docker-compose.yml" % project_name
+    try:
+        click.echo(call(['docker-compose', '-f', compose_file, 'down', '-v']))
+    except Exception as e:
+        bad_request(e)
+
+def docker_rmi(docker_image):
+    client = docker.from_env()
+    image = client.images.remove(image=docker_image, force=True)
 
 # Create docker compose file
 def create_docker_compose(project_name):
+    path = '/project-data/%s/resources' % project_name
+    #if not os.path.exists(path):
+    #    os.makedirs(path)
+    #else:
+    #    shutil.rmtree(path)
+    #    os.makedirs(path)
     # Create docker-compose file
     dockercompose = open(os.path.join(pallur_home, "projectskeleton/docker-compose.yml"),"r")
     src = Template(dockercompose.read())
@@ -481,7 +608,7 @@ def create_docker_compose(project_name):
         bad_request(e)
 
 def docker_logs(container_id):
-    client = docker.from_env
+    client = docker.from_env()
     container = client.get(container_id)
     return container.logs(tail=250, timestamps=True)
 
@@ -535,7 +662,32 @@ def docker_db_remove(project_name):
 # ----------------------------------------------------------
 # Error Handling
 # ----------------------------------------------------------
-
 def bad_request(message):
-    abort(400, {'message': message})
-    #return Response(jsonpickle.encode({'message': message}), status=400, mimetype='application/json')
+
+    click.echo("bad request method")
+    abort(400, message)
+
+@app.errorhandler(400)
+def custom400(error):
+    click.echo("@app.errorhandler(400)")
+    return Response(jsonpickle.encode({'message': error.description}), status=400)
+
+@app.errorhandler(401)
+def custom401(error):
+    return Response(jsonpickle.encode({'message': error.description}), status=401)
+
+@app.errorhandler(403)
+def custom403(error):
+    return Response(jsonpickle.encode({'message': error.description}), status=403, mimetype='application/json')
+
+# ---------------------------------------------------------
+# Flask main
+
+@app.route('/api/help', methods = ['GET'])
+def list_routes():
+    endpoints = [rule.rule for rule in app.url_map.iter_rules() 
+                 if rule.endpoint !='static']
+    return Response(jsonpickle.encode(dict(api_endpoints=endpoints)))
+    
+if __name__ == '__main__':
+    app.run(debug=True,host='0.0.0.0')
