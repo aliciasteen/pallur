@@ -62,7 +62,7 @@ def api_add_user_to_group(username):
 def api_projects():
     api_check_active_session()
     if request.method == 'GET':
-        return 'Projects'
+        return check_user_groups(request.headers['session_id'])
     if request.method == 'POST':
         json = request.get_json(force=True)
         project_name = json['project']['name']
@@ -107,6 +107,7 @@ def api_project_down(project_name):
 @app.route('/api/projects/<project_name>/delete')
 def api_project_delete(project_name):
     api_check_active_session()
+    check_group(request.headers['session_id'], project_name)
     if project_exists(project_name):
         project_delete(project_name)
         return 'Project deleted: %s' % project_name
@@ -218,12 +219,12 @@ def check_group(session_id, project_name):
         if results:
             return "In group"
         else:
-            return "Not in group"
+            abort(401, "You do not have access to this project")
         return str(results)
     except ldap.LDAPError as e:
-        return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+         bad_request('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
     except Exception as e:
-        bad_request(e)
+        bad_request(401, "You do not have access to this project")
 
 # Get all groups user is member of
 def check_user_groups(session_id):
@@ -246,7 +247,7 @@ def ldap_max_uid():
         results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['uidNumber'])
         return max(x[1]['uidNumber'][0] for x in results)
     except ldap.LDAPError as e:
-        return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+        bad_request('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
     except Exception as e:
         return 1000
 
@@ -259,7 +260,7 @@ def ldap_max_gid():
         results = l.search_s("dc=pallur,dc=cloud", ldap.SCOPE_SUBTREE, search_filter, ['gidnumber'])
         return max(x[1]['gidnumber'][0] for x in results)
     except ldap.LDAPError as e:
-        return ('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
+        bad_request('LDAP  Error {0}'.format(e.message['desc'] if 'desc' in e.message else str(e)))
     except Exception as e:
         return 501
 
@@ -337,7 +338,7 @@ def ldap_add_user_to_group(username, project_name):
         click.echo("MODLIST: %s" % modlist)
         l.modify_s(dn, modlist)
     except ldap.SERVER_DOWN:
-        return bad_request("Can't connect to LDAP")
+        bad_request("Can't connect to LDAP")
     except Exception as e:
         bad_request(e.message)
     return "User added to project"
@@ -356,7 +357,7 @@ def ldap_delete_user(username, password):
     except ldap.INVALID_DN_SYNTAX:
         bad_request("Permission Denied")
     except ldap.SERVER_DOWN:
-        return bad_request("Can't connect to LDAP")
+        bad_request("Can't connect to LDAP")
     except Exception as e:
         bad_request(e.message)
     return 'Deleted user: %s' % username
@@ -373,7 +374,7 @@ def ldap_delete_group(project_name):
     except ldap.INVALID_DN_SYNTAX:
         bad_request("Permission Denied")
     except ldap.SERVER_DOWN:
-        return bad_request("Can't connect to LDAP")
+        bad_request("Can't connect to LDAP")
     except Exception as e:
         bad_request(e.message)
     return 'Deleted group: %s' % project_name

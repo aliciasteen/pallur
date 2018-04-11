@@ -1,0 +1,24 @@
+version: '2'
+services:
+  application:
+    container_name: project-${PROJECT_NAME}
+    labels:
+          traefik.backend: "${PROJECT_NAME}"
+          traefik.enable: "true"
+          traefik.frontend.rule: "Host:server.pallur.cloud"
+          traefik.docker.network: "proxy"
+          traefik.port: "80"
+    build:
+      context: ../dockerfile
+    environment:
+      - "project_name=${PROJECT_NAME}"
+      - "application_file=${APPLICATION_FILE}"
+    external_links:
+      - "${PROJECT_NAME}-db"
+    networks:
+      - ${PROJECT_NAME}
+    ports:
+      - "8081:80"
+networks:
+  ${PROJECT_NAME}:
+    external: false

@@ -4,6 +4,7 @@ import click
 import requests
 import json
 import click_spinner
+import yaml
 
 api_root = 'http://server.pallur.cloud:5000/api/'
 
@@ -67,12 +68,12 @@ def delete_user(username, password):
 # Add user to ldap group. This allows users to access projects.
 # Requires user with access to group to be logged in
 @user.command(name='project')
-@click.option('--name', help='Username', prompt=True)
+@click.option('--username', help='Username', prompt=True)
 @click.option('--project', help='Project to add user to', prompt=True)
-def user_groups(name, project):
+def user_groups(username, project):
     """Add user to project"""
     headers = {'session_id': session_id()}
-    url = api_root + name + '/group'
+    url = api_root + username + '/group'
     try:
         r = requests.post(url, headers=headers, json={'project_name': project})
         check_status_code(r)
@@ -103,7 +104,8 @@ def create(name, configuration):
             r = requests.post(url, data=data, headers=headers)
             check_status_code(r)
         except requests.exceptions.ConnectionError:
-            click.echo("Connection error. Please wait and try again.")        
+            click.echo("Connection error. Please wait and try again.")
+    click.echo('Project %s created. Accessable at: %s' % (name, url))       
     
 # Gets status of project. Returns:
 # - Name
@@ -118,7 +120,7 @@ def status(name):
     try:
         r = requests.get(url, headers=headers)
         check_status_code(r)
-        click.echo(json.dumps(r.json(), indent=4, separators=(',', ': ')))
+        click.echo(yaml.safe_dump(r.json(), default_flow_style=False))
     except requests.exceptions.ConnectionError:
         click.echo("Connection error. Please wait and try again.")    
 
@@ -130,12 +132,12 @@ def up(name):
     """Deploy Project"""
     headers = {'session_id': session_id()}
     url = api_root + 'projects/%s/up' % name 
-    try:
-        r = requests.get(url, headers=headers)
-        check_status_code(r)
-        click.echo(r.text)
-    except requests.exceptions.ConnectionError:
-        click.echo("Connection error. Please wait and try again.")    
+    with click_spinner.spinner():
+        try:
+            r = requests.get(url, headers=headers)
+            check_status_code(r)
+        except requests.exceptions.ConnectionError:
+            click.echo("Connection error. Please wait and try again.")    
     click.echo('Project %s deployed' % name)
 
 # Deletes project
@@ -162,22 +164,23 @@ def down(name):
     """project down"""
     headers = {'session_id': session_id()}
     url = api_root + 'projects/%s/down' % name 
-    try:
-        r = requests.get(url, headers=headers)
-        check_status_code(r)
-        click.echo('Project %s stopped' % name)
-    except requests.exceptions.ConnectionError:
-        click.echo("Connection error. Please wait and try again.")   
+    with click_spinner.spinner():
+        try:
+            r = requests.get(url, headers=headers)
+            check_status_code(r)
+            click.echo('Project %s stopped' % name)
+        except requests.exceptions.ConnectionError:
+            click.echo("Connection error. Please wait and try again.")   
 
 # Update project
 # Can redeploy if needed
 @project.command()
-@click.option('--name', '-n' , default='NewProject', help='Project name', prompt=True)
+@click.option('--name', '-n', help='Project name', prompt=True)
 @click.option('--configuration', type=click.File('r'), help='Path of configuration file', prompt='Configuration file path')
 def update(name, configuration):
     """project update"""
     headers = {'session_id': session_id()}
-    url = api_root + name + "/update"
+    url = api_root + 'projects/%s/update' % name 
     data = configuration.read()
     click.echo('Updating project %s' % name)
     with click_spinner.spinner():
@@ -196,7 +199,8 @@ def list():
     try:
         r = requests.get(url, headers=headers)
         check_status_code(r)
-        click.echo(r.text())
+        projects = r.json()
+        click.echo(yaml.safe_dump(projects, default_flow_style=False))
     except requests.exceptions.ConnectionError:
         click.echo("Connection error. Please wait and try again.")
 
@@ -243,8 +247,12 @@ def check_status_code(r):
         except:
             message = 'No Message'
             click.echo(click.style("%s An error has occured: %s" % (status_code, message), fg='red'))
+            quit()
         if status_code == 401:
             click.echo(click.style("You are not logged in or session may have expired. Please login in.", fg='red'))
+            quit()
+        if status_code == 500:
+            click.echo(click.style("Server Error. Please try again.", fg='red'))
             quit()
         else:
             click.echo(click.style("Error %s: %s" % (status_code, message), fg='red'))
