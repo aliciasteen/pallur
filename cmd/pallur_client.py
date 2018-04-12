@@ -114,7 +114,7 @@ def create(name, configuration):
 @project.command()
 @click.option('--name', '-n', help='Project name', prompt=True) 
 def status(name):
-    """Create Project"""
+    """Project Status"""
     headers = {'session_id': session_id()}
     url = api_root + 'projects/' + name
     try:
@@ -124,7 +124,20 @@ def status(name):
     except requests.exceptions.ConnectionError:
         click.echo("Connection error. Please wait and try again.")    
 
-    
+@project.command()
+@click.option('--name', '-n', help='Project name', prompt=True) 
+def logs(name):
+    """Project Logs"""
+    headers = {'session_id': session_id()}
+    url = api_root + 'projects/%s/logs' % name
+    try:
+        r = requests.get(url, headers=headers)
+        check_status_code(r)
+        click.echo(r.text)
+    except requests.exceptions.ConnectionError:
+        click.echo("Connection error. Please wait and try again.")    
+
+
 # Deploys project from configuration saved
 @project.command()
 @click.option('--name', '-n', help='Project name', prompt=True) 
@@ -216,6 +229,8 @@ def login(username, password):
     r = requests.post(api_root + 'login', json={'username': username, 'password': password})
     if r.status_code == 401:
         click.echo("Login failed please try again")
+    elif r.status_code != 200:
+        check_status_code(r)
     else:
         session_id = (r.json()['session_id'])
         file_location = expanduser("~")
