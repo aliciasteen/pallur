@@ -126,7 +126,7 @@ def api_project_delete(project_name):
     else:
         bad_request("Project does not exist")
 
-@app.route('/api/project/<project_name>/logs')
+@app.route('/api/projects/<project_name>/logs')
 def api_project_logs(project_name):
     api_check_active_session()
     if project_exists(project_name):
@@ -480,7 +480,7 @@ def project_delete(project_name):
     remove_files(project_name)
 
 def project_logs(project_name):
-    container_id = etcd_get(project_name, "containerid")
+    container_id = "project-%s" % project_name
     return docker_logs(container_id)
 
 def project_exists(project_name):
@@ -620,7 +620,7 @@ def create_docker_compose(project_name):
 
 def docker_logs(container_id):
     client = docker.from_env()
-    container = client.get(container_id)
+    container = client.containers.get(container_id)
     return container.logs(tail=250, timestamps=True)
 
 def remove_files(project_name):
