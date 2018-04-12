@@ -1,16 +1,17 @@
 from setuptools import setup
 
 setup(
-  name='Pallur',
-  version='0.0.1',
-  py_modules=['pallur'],
-  install_requirements=[
-    'Click',
-    'python_ldap',
-    'docker'
-  ],
-  entry_points='''
-    [console_scripts]
-    pallur=pallur:pallur
-  ''',
+    name='pallur',
+    version='0.1',
+    py_modules=['pallur'],
+    install_requires=[
+        'Click',
+        'requests',
+        'pyyaml',
+        'click_spinner'
+    ],
+    entry_points='''
+        [console_scripts]
+        pallur=pallur_client:pallur_client
+    ''',
 )

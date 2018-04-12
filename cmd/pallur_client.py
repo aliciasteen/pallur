@@ -224,15 +224,6 @@ def login(username, password):
         session_file.close
         click.echo("Logged in!")
 
-
-# ----------------------------------------------------------
-# Error test
-
-@pallur_client.command()
-def errortest():
-    r = requests.get(api_root + 'errortest')
-    check_status_code(r)
-
 # ----------------------------------------------------------
 # Methods
 # ----------------------------------------------------------
