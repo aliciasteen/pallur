@@ -18,7 +18,7 @@ pallur_home = "/root/pallur"
 
 ldap_admin_user = "cn=admin,dc=pallur,dc=cloud"
 ldap_admin_pass = "admin"
-ldap_server="ldap://0.0.0.0:389"
+ldap_server="ldap://openldap:389"
 
 # ----------------------------------------------------------
 # Flask API routes
@@ -180,7 +180,7 @@ def api_check_active_session():
         session_id = request.headers['session_id']
         if check_active_session(session_id) != 1:
             return abort(401)
-    except Exception as e:
+    except Exception:
         return abort(401)
     
 
@@ -193,7 +193,7 @@ def check_active_session(session_id):
             return Response(status=401)
         else:
             return 1
-    except Exception as e:
+    except Exception :
         return Response(status=401)
 
 def get_username_from_session(session_id):
@@ -593,11 +593,11 @@ def docker_rmi(docker_image):
 # Create docker compose file
 def create_docker_compose(project_name):
     path = '/project-data/%s/resources' % project_name
-    #if not os.path.exists(path):
-    #    os.makedirs(path)
-    #else:
-    #    shutil.rmtree(path)
-    #    os.makedirs(path)
+    if not os.path.exists(path):
+        os.makedirs(path)
+    else:
+        shutil.rmtree(path)
+        os.makedirs(path)
 
     if etcd_get(project_name, "dastabase/type"):
         dockercompose = open(os.path.join(pallur_home, "projectskeleton/docker-compose-db.yml"),"r")
