@@ -13,7 +13,7 @@ services:
         container_name: traefik
         volumes:
             - "/var/run/docker.sock:/var/run/docker.sock"
-            - "/root/pallur/traefik.toml:/traefik.toml"
+            - "./configuration/traefik.toml:/traefik.toml"
         ports:
             - "80:80"
             - "443:443"
@@ -22,6 +22,7 @@ services:
             - "traefik.port=8080"
         networks:
             - proxy
+        restart: always
     etcd:
         image:
             quay.io/coreos/etcd:latest
@@ -40,6 +41,7 @@ services:
         labels:
             traefik.backend: "etcd"
             traefik.enable: "false"
+        restart: always
     openldap:
         image: osixia/openldap:1.1.11
         container_name: openldap
@@ -74,7 +76,7 @@ services:
             - /var/lib/ldap
             - /etc/ldap/slapd.d
             - /container/service/slapd/assets/certs/
-            - /root/pallur/ldap.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/ldap.ldif
+            - ./configuration/ldap.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/ldap.ldif
         ports:
             - "389:389"
             - "636:636"
@@ -83,6 +85,7 @@ services:
         labels:
             traefik.backend: "ldap"
             traefik.enable: "false"
+        restart: always
     pallur:
         image: pallur/pallur:0.0.3
         container_name: pallur
@@ -99,5 +102,6 @@ services:
             traefik.frontend.rule: "Host:server.pallur.cloud"
             traefik.docker.network: "proxy"
             traefik.port: "5000"
+        restart: always
 volumes:
     etcd-data:
