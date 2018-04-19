@@ -36,3 +36,16 @@ Client commands to interact with client
 | User | Create | Create user | Username, Password |
 | | Delete | Delete user | Username, Password |
 | | Project | Add user to project | User, Project name |
+
+# Server Installation
+
+### Requirements:
+  - Docker
+  - Docker-Compose
+
+### Installlation:
+```sh
+$ cd pallur/server
+$ docker network create proxy
+$ docker-compose -f 
+```
