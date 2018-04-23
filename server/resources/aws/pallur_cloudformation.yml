@@ -32,11 +32,10 @@ Parameters:
   HostedZone:
     Type: String
     Description: The DNS name of an existing Amazon Route 53 hosted zone
-  HostedZoneName:
-    Description: 'The name of the Route53-hosted zone to create a DNS entry in. This
-      must match the zone name corresponding to HostedZoneId, and is used to define
-      the hostname that will be created. Example: ''domain.com'' would result
-      in a hostname of ''pallur.domain.com''.'
+  DomainName:
+    Description: 'The name of the Route53 entry to create. This must match the zone name corresponding to HostedZoneId, and is used to define
+      the hostname that will be created. Example: if the hosted zone is ''domain.com'' 
+      enter the DomainName of ''pallur.domain.com''.'
     Type: String
     MinLength: 4
 Mappings:
@@ -137,7 +136,9 @@ Resources:
           docker pull pallur/pallur:latest
           docker network create proxy
           cd pallur/server/resources/compose
-          docker-compose -f docker-compose-setup.yml up -d 
+          export DOMAIN=${DomainName}
+          . compose/configuration/traefik.sh
+          docker-compose -f docker-compose-setup.yml up -d
   IPAddress:
     Type: 'AWS::EC2::EIP'
   IPAssoc:
@@ -150,7 +151,7 @@ Resources:
     Properties:
       HostedZoneId: !Ref HostedZone
       Comment: DNS name for Pallur instance.
-      Name: !Join ['', ['pallur', ., !Ref 'HostedZoneName']]
+      Name: !Ref DomainName
       Type: CNAME
       TTL: '900'
       ResourceRecords:

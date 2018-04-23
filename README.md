@@ -47,5 +47,7 @@ Client commands to interact with client
 ```sh
 $ cd pallur/server
 $ docker network create proxy
-$ docker-compose -f 
+$ export DOMAIN=<pallur domain name>
+$ . resources/compose/configuration/traefik.sh
+$ docker-compose -f resources/compose/docker-compose-setup.yaml up -d
 ```
