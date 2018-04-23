@@ -13,16 +13,16 @@ api_root = 'http://server.pallur.cloud:5000/api/'
 # ----------------------------------------------------------
 
 @click.group()
-def pallur_client():
+def pallur():
     "PaaS for python"
     pass
 
-@pallur_client.group()
+@pallur.group()
 def project():
     """Interact with, create and destroy projects"""
     pass
 
-@pallur_client.group()
+@pallur.group()
 def user():
     """User login, logout, management and deletion"""
     pass
@@ -221,7 +221,7 @@ def list():
 # Click login
 # ----------------------------------------------------------
 
-@pallur_client.command()
+@pallur.command()
 @click.option('--username', prompt=True, help='username')
 @click.password_option(confirmation_prompt=False)
 def login(username, password):
@@ -275,4 +275,4 @@ def session_id():
         quit()
 
 if __name__ == '__main__':
-    pallur_client()
+    pallur()

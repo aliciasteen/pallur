@@ -2,9 +2,9 @@ from setuptools import setup
 
 setup(
     name='pallur',
-    version='0.1',
+    version='1',
     py_modules=['pallur'],
-    install_requires=[
+    install_requirements=[
         'Click',
         'requests',
         'pyyaml',
@@ -12,6 +12,6 @@ setup(
     ],
     entry_points='''
         [console_scripts]
-        pallur=pallur_client:pallur_client
+        pallur=pallur:pallur
     ''',
 )
