@@ -2,8 +2,7 @@ version: '3.5'
 services:
   application:
     container_name: project-${project_name}
-    image: ${image}
-    #env_file: .env
+    image: ${image}:${tag}
     networks:
       - internal
       - proxy
