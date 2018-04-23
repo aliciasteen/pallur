@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: A template to launch Pallur.
+
+Parameters:
+  VpcID:
+    Description: VPC ID where your instance will be created
+    Type: AWS::EC2::VPC::Id
+  VPCSubnet:
+    Description: subnet ID
+    Type: AWS::EC2::Subnet::Id
+  KeyName:
+    Description: Key-pair name to use. 
+    Type: AWS::EC2::KeyPair::KeyName
+  InstanceType: 
+    Description: WebServer EC2 instance type
+    Type: String
+    Default: t2.small
+    AllowedValues:
+      - t2.small
+      - t2.medium
+      - t2.large
+    ConstraintDescription: must be a valid EC2 instance type.
+  SSHLocation:
+    Description: The IP address range that can be used to SSH to the EC2 instances
+    Type: String
+    MinLength: '9'
+    MaxLength: '18'
+    Default: 0.0.0.0/0
+    AllowedPattern: '(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})'
+    ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x. 
+  HostedZone:
+    Type: String
+    Description: The DNS name of an existing Amazon Route 53 hosted zone
+  HostedZoneName:
+    Description: 'The name of the Route53-hosted zone to create a DNS entry in. This
+      must match the zone name corresponding to HostedZoneId, and is used to define
+      the hostname that will be created. Example: ''domain.com'' would result
+      in a hostname of ''pallur.domain.com''.'
+    Type: String
+    MinLength: 4
+Mappings:
+  RegionMap:
+    eu-central-1:
+      AMI: ami-337be65c
+    eu-west-1:
+      AMI: ami-6e28b517
+    eu-west-2:
+      AMI: ami-ee6a718a
+    eu-west-3:
+      AMI: ami-bfff49c2
+    us-east-1:
+      AMI: ami-4bf3d731
+    us-east-2:
+      AMI: ami-e1496384
+    us-west-1:
+      AMI: ami-65e0e305
+    us-west-2:
+      AMI: ami-a042f4d8
+    ap-southeast-1:
+      AMI: ami-d2fa88ae
+    ap-southeast-2:
+      AMI: ami-b6bb47d4
+    ap-south-1:
+      AMI: ami-5d99ce32
+    ap-northeast-1:
+      AMI: ami-25bd2743
+    ap-northeast-2:
+      AMI: ami-7248e81c
+    ca-central-1:
+      AMI: ami-dcad28b8
+    sa-east-1:
+      AMI: ami-f9adef95
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enabling access to all IPs and below listed ports from within VPC
+      VpcId:
+        Ref: VpcID
+      SecurityGroupIngress:
+      - CidrIp: !Ref SSHLocation
+        FromPort: '22'
+        IpProtocol: tcp
+        ToPort: '22'
+      - CidrIp: '0.0.0.0/0'
+        FromPort: '80'
+        IpProtocol: tcp
+        ToPort: '80'
+      - CidrIp: '0.0.0.0/0'
+        FromPort: '443'
+        IpProtocol: tcp
+        ToPort: '443'
+  PallurEc2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Fn::FindInMap:
+        - RegionMap
+        - Ref: AWS::Region
+        - 'AMI'
+      InstanceType: !Ref InstanceType
+      KeyName:
+        Ref: KeyName
+      NetworkInterfaces:
+      - DeleteOnTermination: 'true'
+        DeviceIndex: '0'
+        GroupSet:
+          - Fn::GetAtt:
+            - SecurityGroup
+            - GroupId
+        SubnetId:
+          Ref: VPCSubnet
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Join:
+            - "-"
+            - - Ref: AWS::StackName
+      UserData:
+        Fn::Base64: !Sub | 
+          #!/bin/bash
+          echo '========================= Install Docker ========================='
+          yum install -y yum-utils  device-mapper-persistent-data lvm2 git
+          yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+          yum install -y docker-ce
+          systemctl daemon-reload && systemctl enable docker && systemctl restart docker
+          
+          echo '========================= Install Docker Compose ========================'
+          curl -L https://github.com/docker/compose/releases/download/1.21.0/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+          
+          echo '========================= Run Pallur ========================'
+          mkdir /pallur && cd /pallur
+          git clone https://github.com/aliciasteen/pallur.git
+          docker pull pallur/pallur:latest
+          docker network create proxy
+          cd pallur/server/resources/compose
+          docker-compose -f docker-compose-setup.yml up -d 
+  IPAddress:
+    Type: 'AWS::EC2::EIP'
+  IPAssoc:
+    Type: 'AWS::EC2::EIPAssociation'
+    Properties:
+      InstanceId: !Ref PallurEc2Instance
+      EIP: !Ref IPAddress
+  DnsRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZone
+      Comment: DNS name for Pallur instance.
+      Name: !Join ['', ['pallur', ., !Ref 'HostedZoneName']]
+      Type: CNAME
+      TTL: '900'
+      ResourceRecords:
+      - !Ref IPAddress
+Outputs:
+  InstanceId:
+    Description: InstanceId of the Pallur instance
+    Value: !Ref PallurEc2Instance
+  InstanceIPAddress:
+    Description: IP address of the Pallur instance
+    Value: !Ref IPAddress
