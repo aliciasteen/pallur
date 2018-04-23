@@ -7,7 +7,11 @@ setup(
   install_requirements=[
     'Click',
     'python_ldap',
-    'docker'
+    'docker',
+    'flask',
+    'git',
+    'jsonpickle',
+    'requests'
   ],
   entry_points='''
     [console_scripts]

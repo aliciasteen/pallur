@@ -18,4 +18,4 @@ onDemand = true
 
 
 [[acme.domains]]
-  main = "server.pallur.cloud"
+  main = "DOMAIN"
