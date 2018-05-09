@@ -87,7 +87,7 @@ services:
             traefik.enable: "false"
         restart: always
     pallur:
-        image: pallur/pallur:test
+        image: pallur/pallur:3
         container_name: pallur
         volumes:
             - "/var/run/docker.sock:/var/run/docker.sock"
