@@ -1,6 +1,6 @@
 FROM python:${python_version}
 
-COPY /project-data/${project_name} /src
+COPY resources /src
 RUN pip install -r /src/requirements.txt
 EXPOSE ${port}
 CMD ["python", "/src/${main_file}"]
