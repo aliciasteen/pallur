@@ -1,0 +1,15 @@
+{
+    "project": {
+      "name": "microsoft",
+      "description": "Python Flask web application",
+      "python_version": 2.7
+    },
+    "source": {
+      "url": "https://github.com/aliciasteen/project-python-flask-webapp.git",
+      "branch": "master"
+    },
+    "configuration": {
+      "file": "runserver.py",
+      "port": 5555
+    }
+  }

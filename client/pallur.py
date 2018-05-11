@@ -6,7 +6,7 @@ import json
 import click_spinner
 import yaml
 
-api_root = 'http://server.pallur.cloud:5000/api/'
+api_root = 'http://server.pallur.cloud/api/'
 
 # ----------------------------------------------------------
 # Click groups
@@ -105,7 +105,8 @@ def create(name, configuration):
             check_status_code(r)
         except requests.exceptions.ConnectionError:
             click.echo("Connection error. Please wait and try again.")
-    click.echo('Project %s created. Accessable at: %s' % (name, url))       
+    project_url = api_root.split('/')[2]
+    click.echo('Project %s created. Accessable at: %s.%s' % (name, name, project_url))       
     
 # Gets status of project. Returns:
 # - Name
@@ -238,6 +239,17 @@ def login(username, password):
         session_file.write(session_id)
         session_file.close
         click.echo("Logged in!")
+
+@pallur.command()
+def logout():
+    """Logout of Pallur"""
+    file_location = expanduser("~")
+    if os.path.isfile(os.path.join(file_location, ".pallursession")):
+        os.remove(os.path.join(file_location, ".pallursession"))
+        click.echo("Logged Out!")
+    else:    
+        click.echo("Not logged in!")
+
 
 # ----------------------------------------------------------
 # Methods
