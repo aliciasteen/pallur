@@ -607,7 +607,9 @@ def create_docker_compose(project_name):
     src = Template(dockercompose.read())
     dockercompose.close()
     # # Substitute values
-    d = {'image':'test', 'tag':'0.0.1', 'port':8000, 'project_name':project_name}
+    port = etcd_get(project_name, "configuration/port")
+    d = {'image':project_name, 'tag':'0.0.1', 'port':port, 'project_name':project_name}
+    
     result = src.substitute(d)
  
     # Save temp docker-compose file
