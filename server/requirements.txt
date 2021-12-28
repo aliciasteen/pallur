@@ -4,4 +4,4 @@ Flask==1.0
 GitPython==2.1.8
 jsonpickle==0.9.6
 requests==2.20.0
-python-ldap==3.0.0
+python-ldap==3.4.0
