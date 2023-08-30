@@ -1,7 +1,7 @@
 click==6.7
 docker==3.1.1
 Flask==2.3.2
-GitPython==3.1.30
+GitPython==3.1.32
 jsonpickle==0.9.6
 requests==2.31.0
 python-ldap==3.4.0
